@@ -1,7 +1,7 @@
 ---
-title: "Troubleshooting Common Rakion Server Issues"
+title: "Troubleshooting Common Rakion Private Server Issues"
 sidebarTitle: "Troubleshooting"
-description: "Diagnose and fix common issues with AutoQuery, the PHP web backend, FixLaunch, and the launcher update system."
+description: "Diagnose and fix the most common issues with AutoQuery, the PHP web backend, FixLaunch registry setup, TexTools, and the file update system."
 ---
 
 This page covers the most frequently encountered problems when running a Rakion private server and explains exactly what causes each one and how to resolve it. Issues are grouped by component.
@@ -19,7 +19,7 @@ This page covers the most frequently encountered problems when running a Rakion 
     2. Confirm MySQL is running: `sc query MySQL` (Windows) or `systemctl status mysql` (Linux).
     3. Ensure port 3306 is not blocked by Windows Firewall or any network ACL between AutoQuery and the database host.
 
-    AutoQuery will retry the connection automatically every `delay` milliseconds (default 10 000 ms / 10 seconds) — it does not exit on a connection failure.
+    AutoQuery retries the connection automatically after a fixed **5-second** pause (`Thread.Sleep(5000)`) — it does not exit on a connection failure.
   </Accordion>
 
   <Accordion title="AutoQuery stops after N iterations">
@@ -47,7 +47,7 @@ This page covers the most frequently encountered problems when running a Rakion 
 
     **Fix:** Ensure the directory structure looks like this:
 
-    ```
+    ```text
     AutoQuery.exe
     Settings\
         Settings.ini
@@ -106,16 +106,25 @@ This page covers the most frequently encountered problems when running a Rakion 
   <Accordion title="fetch.php returns 'Error'">
     **Symptoms:** Requesting `fetch/fetch.php` returns the literal string `Error`.
 
-    **Cause:** The `AppId` or version parameters in the query string are not valid integers. `fetch.php` validates both values with `is_numeric()` and `round()` and exits with `Error` if either check fails.
+    **Cause:** There are two distinct causes:
 
-    **Fix:** Confirm the launcher is constructing the URL correctly — both parameters must be plain integers with no extra characters:
+    1. **Invalid parameters** — the `AppId` or version values in the query string are not plain integers. `fetch.php` validates both with `is_numeric()` and `round()` and exits with `Error` if either check fails.
+    2. **Client version ahead of server** — the client's reported version is _greater than_ `VerLimit` in `fetchapp`. `fetch.php` echoes `Error` in the `else` branch when `VerLimit < ver`.
 
-    ```
+    **Fix for cause 1:** Confirm the launcher is constructing the URL correctly — both parameters must be plain integers with no extra characters:
+
+    ```text
     fetch.php?1&0        ✅  AppId=1, version=0
     fetch.php?app1&v0    ❌  fails is_numeric check
     ```
 
     Also verify that any reverse proxy or URL rewriting rules are not modifying the raw query string before it reaches PHP.
+
+    **Fix for cause 2:** Run `SELECT VerLimit FROM fetchapp WHERE AppId = <id>;` and compare it to the version the client sends. If `VerLimit` is lower than the client version, update it to the correct value:
+
+    ```sql
+    UPDATE `fetchapp` SET VerLimit = <correct_version> WHERE AppId = <id>;
+    ```
   </Accordion>
 
   <Accordion title="No files returned by fetch.php">
@@ -155,12 +164,38 @@ This page covers the most frequently encountered problems when running a Rakion 
 ## TexTools
 
 <AccordionGroup>
+  <Accordion title="TexFix exits immediately without producing any output">
+    **Symptoms:** Running `TexFix.exe` produces no output file and returns silently.
+
+    **Cause:** TexFix checks `if (args.Length <= 1)` and returns immediately if fewer than two arguments are provided. It requires **exactly two** positional arguments: the original file path and the new file path.
+
+    **Fix:** Pass both arguments on the command line:
+
+    ```bash
+    TexFix.exe original.tex nuevo.tex
+    ```
+
+    The output file will be written as `nuevo_mod.tex` (the second argument's filename with `_mod` inserted before the extension).
+  </Accordion>
+
   <Accordion title="TexFix produces a blank or zero-byte output file">
     **Symptoms:** Running `TexFix.exe original.tex nuevo.tex` completes but the output `nuevo_mod.tex` is empty or much smaller than expected.
 
     **Cause:** TexFix reads exactly 44 bytes from the _original_ file as the header (`ori_read.ReadBytes(44)`) and then reads everything after byte 44 from the _nuevo_ file as the body. If either input file is shorter than 44 bytes, the header or body array will be undersized, resulting in a truncated or empty output.
 
     **Fix:** Ensure both input `.tex` files are valid Rakion texture files of at least 44 bytes. Use `TexValidation.exe` to confirm the files parse correctly before passing them to TexFix.
+  </Accordion>
+
+  <Accordion title="TexValidation exits immediately without printing anything">
+    **Symptoms:** Running `TexValidation.exe` with no arguments produces no output at all.
+
+    **Cause:** TexValidation checks `if (args.Length <= 0)` and returns immediately if no file path argument is provided. It requires **exactly one** positional argument: the path to the `.tex` file to inspect.
+
+    **Fix:** Pass the file path as the first argument:
+
+    ```bash
+    TexValidation.exe myfile.tex
+    ```
   </Accordion>
 
   <Accordion title="TexValidation shows 'No Work!'">

@@ -1,7 +1,7 @@
 ---
-title: "Deploy a Full Rakion Private Server from Scratch"
+title: "Deploy a Complete Rakion Private Server from Scratch"
 sidebarTitle: "Server Setup"
-description: "End-to-end guide for deploying a Rakion private server: MySQL, PHP web backend, AutoQuery, BrokenServer, and client distribution."
+description: "End-to-end guide for deploying a Rakion private server: MySQL database, PHP web backend, AutoQuery, BrokenServer, and client distribution."
 ---
 
 Standing up a Rakion private server involves several moving pieces: a MySQL database, a PHP web backend for launcher authentication and file delivery, the AutoQuery C# daemon that periodically processes pending commands, the BrokenServer game-server binary, and the FixLaunch utility distributed to players. This guide walks you through every layer in order.
@@ -22,7 +22,7 @@ Standing up a Rakion private server involves several moving pieces: a MySQL data
     Required to run AutoQuery.exe and BrokenServer.exe. Install the matching runtime from Microsoft if it is not already present on your server.
   </Card>
   <Card title="Firewall ports 40706–40710" icon="shield">
-    BrokenServer binds to port 40706 by default. Additional world-server instances use ports 40707–40710. Open these in Windows Firewall and any upstream network firewall.
+    BrokenServer binds to port 40706 by default. The three world-server instances use ports 40708, 40709, and 40710. Open all required ports in Windows Firewall and any upstream network firewall.
   </Card>
 </CardGroup>
 
@@ -97,7 +97,7 @@ Standing up a Rakion private server involves several moving pieces: a MySQL data
 
     Once the INI is configured, launch the executable:
 
-    ```
+    ```bat
     AutoQuery.exe
     ```
   </Step>
@@ -134,11 +134,29 @@ Standing up a Rakion private server involves several moving pieces: a MySQL data
     port=40708
     ipcport=40708
     lan_wan=0        ; 0 = lan | 1 = wan
+
+    [WorldServer2]
+    ID=2
+    Name=WorldServer2
+    ip=192.168.1.6
+    wan=192.168.1.6
+    port=40709
+    ipcport=40709
+    lan_wan=0
+
+    [WorldServer3]
+    ID=3
+    Name=WorldServer3
+    ip=192.168.1.6
+    wan=192.168.1.6
+    port=40710
+    ipcport=40710
+    lan_wan=0
     ```
 
     Then launch:
 
-    ```
+    ```bat
     compiled\broken_bin\BrokenServer.exe
     ```
   </Step>
@@ -151,7 +169,7 @@ Standing up a Rakion private server involves several moving pieces: a MySQL data
     2. Right-click → **Run as administrator**.
     3. Confirm the path shown in the first text box, enter the client version number in the second box, and click **Apply**.
 
-    A "Complete!" dialog confirms the registry entries were written successfully.
+    A "Complete!" dialog appears once the apply action finishes. If a registry error occurred (for example, missing administrator rights), a separate error dialog will appear before the completion dialog — in that case, elevate privileges and try again.
   </Step>
 </Steps>
 

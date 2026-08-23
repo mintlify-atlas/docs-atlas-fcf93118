@@ -1,7 +1,7 @@
 ---
-title: "GameServers.ini and Settings.ini for BrokenServer"
+title: "GameServers.ini and BrokenServer Settings.ini Reference"
 sidebarTitle: "Game Servers"
-description: "Configure world server endpoints, IPC ports, and console debug mode for BrokenServer using GameServers.ini and Settings.ini."
+description: "Configure world server endpoints, IPC ports, and console debug mode for BrokenServer using GameServers.ini and Settings.ini with exact default values."
 ---
 
 BrokenServer is the compiled Rakion game server binary. Its behaviour is controlled by two INI files located in `compiled/broken_bin/Settings/` relative to the repository root (or next to `BrokenServer.exe` when deployed). Both files must be edited before starting the server for the first time.
@@ -21,8 +21,8 @@ BrokenServer is the compiled Rakion game server binary. Its behaviour is control
 [Server.Local]
 ID=1
 Name=WorldServer1
-ip=127.0.0.1          // lan ip
-wan=192.168.1.6       // wan ip
+ip=127.0.0.1          //lan ip
+wan=192.168.1.6       //wan ip
 port=40708
 ipcport=40708
 lan_wan=0             // 0 = lan | 1 = wan
@@ -91,23 +91,23 @@ debug=1
 
 ### \[Server\] Section
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `ip` | string | The IP address BrokenServer binds to for incoming client connections. Set this to the NIC address you want the server to listen on. |
-| `port` | int | The TCP/UDP port BrokenServer listens on for game client traffic (e.g. `40706`). |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `ip` | string | `192.168.1.5` | The IP address BrokenServer binds to for incoming client connections. Set this to the NIC address you want the server to listen on. |
+| `port` | int | `40706` | The TCP/UDP port BrokenServer listens on for game client traffic. |
 
 ### \[IPC\] Section
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `port` | int | The port used for inter-process communication between server processes. Typically the same as `[Server] port`. |
-| `ip` | string | The IP address the IPC listener binds to. Use `127.0.0.1` to restrict IPC to the local machine. |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `port` | int | `40706` | The port used for inter-process communication between server processes. Typically the same as `[Server] port`. |
+| `ip` | string | `127.0.0.1` | The IP address the IPC listener binds to. Use `127.0.0.1` to restrict IPC to the local machine. |
 
 ### \[CONSOLE\] Section
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `debug` | int | Console verbosity level. `0` = disabled (minimal output), `1` = verbose debug output enabled. |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `debug` | int | `1` | Console verbosity level. `0` = disabled (minimal output), `1` = verbose debug output enabled. |
 
 ---
 

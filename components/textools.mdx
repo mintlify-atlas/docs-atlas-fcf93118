@@ -1,7 +1,7 @@
 ---
-title: "TexTools: Patch and Inspect Rakion Texture Files"
+title: "TexTools: Patch and Inspect Rakion .tex Texture Files"
 sidebarTitle: "TexTools"
-description: "TexFix patches .tex texture files by transplanting their header, while TexValidation parses and prints all header fields including compression format and dimensions."
+description: "TexFix patches .tex files by transplanting the 44-byte header, while TexValidation parses and prints all header fields including format and dimensions."
 ---
 
 Rakion stores textures in a proprietary `.tex` binary format. Every `.tex` file begins with a fixed **44-byte header** that carries metadata including version, dimensions, mipmap count, compression type, and animation offset. TexTools Alpha ships two command-line programs for working with these files: **TexFix** for surgically patching texture data, and **TexValidation** for inspecting and validating header contents.
@@ -18,7 +18,7 @@ TexFix transplants the 44-byte header from an existing (original) `.tex` file on
 
 ### Usage
 
-```
+```bash
 TexFix.exe <original.tex> <new.tex>
 ```
 
@@ -33,7 +33,7 @@ TexFix writes the combined result to a new file named `<new>_mod.tex` in the cur
 
 ### Example
 
-```
+```bash
 TexFix.exe skin_original.tex skin_new.tex
 # Output: skin_new_mod.tex
 ```
@@ -52,7 +52,7 @@ TexValidation parses a `.tex` file's 44-byte header and prints every field to th
 
 ### Usage
 
-```
+```bash
 TexValidation.exe <file.tex>
 ```
 
@@ -119,6 +119,7 @@ Wraps the supplied byte array. The `Buffer` property exposes the underlying arra
 | `ReadBytes(len)`           | `byte[]`    | Reads `len` bytes into a new array and advances the cursor by `len`        |
 | `ReadFloat()`              | `float`     | Reads a 32-bit IEEE 754 float and advances the cursor by 4                 |
 | `ReadCode()`               | `string`    | Reads a null-terminated ASCII string and advances past the null terminator |
+| `ReadLua()`                | `string`    | Reads a 4-byte ASCII string from the 5 bytes immediately before the current cursor position (does not advance the cursor) |
 | `ReadASCII(length)`        | `string`    | Reads exactly `length` bytes as an ASCII string                            |
 | `ReadUnicode(length)`      | `string`    | Reads `length` characters as a UTF-16 Unicode string (advances by `length * 2`) |
 | `SkipBytes(count)`         | `void`      | Advances the cursor by `count` bytes without reading                       |

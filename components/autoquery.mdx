@@ -1,5 +1,5 @@
 ---
-title: "AutoQuery: Scheduled MySQL Maintenance for Rakion"
+title: "AutoQuery: Timed MySQL Maintenance for Rakion Database"
 sidebarTitle: "AutoQuery"
 description: "AutoQuery runs MySQL stored procedures on a configurable timer to keep your Rakion database clean. Configure via Settings.ini and run as a Windows service."
 ---
@@ -43,7 +43,7 @@ AutoQuery reads its settings from `Settings\Settings.ini` in the application dir
 ```ini
 [Timer]
 minutes = 10
-max     = 10
+max     = 100
 delay   = 10000
 infi    = false
 [MYSQL]

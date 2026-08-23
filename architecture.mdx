@@ -1,7 +1,7 @@
 ---
-title: "System Architecture of Rakion Launcher Tools"
+title: "Rakion Launcher Tools: Complete System Architecture"
 sidebarTitle: "Architecture"
-description: "How AutoQuery, the PHP web backend, FixLaunch, TexTools, and GConfig interconnect to support a private Rakion server."
+description: "How AutoQuery, the PHP backend, FixLaunch, TexTools, and GConfig interconnect — covering auth flow, update protocol, and database maintenance for Rakion."
 ---
 
 The Rakion Launcher Tools suite is built around a shared MySQL database (`rakion`) that acts as the single source of truth for authentication state, player economy data, file update manifests, and pending session cleanup. Each component talks to one or more of its tables, and all coordination happens through SQL rather than inter-process communication — making the system straightforward to host on a single machine or to distribute across separate servers.

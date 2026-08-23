@@ -1,7 +1,7 @@
 ---
-title: "fetchapp and fetchfile: Launcher Update Tables"
+title: "Rakion fetchapp and fetchfile: Launcher File Update Tables"
 sidebarTitle: "Fetch Tables"
-description: "How to populate fetchapp and fetchfile to deliver client file updates through the Rakion launcher fetch API endpoint."
+description: "How to configure fetchapp and fetchfile to control Rakion launcher automatic file updates, including SQL schema, insert examples, and the fetch API flow."
 ---
 
 The `fetchapp` and `fetchfile` tables power the Rakion launcher's automatic update system. When the launcher starts, it calls `fetch/fetch.php` with its current application ID and version number. The PHP endpoint queries these two tables to determine whether any new files need to be downloaded, then returns a structured manifest the launcher uses to update itself. Adding or changing a file in the client requires nothing more than inserting rows into `fetchfile` and bumping `VerLimit` in `fetchapp`.

@@ -1,7 +1,7 @@
 ---
-title: "FixLaunch: Fix Rakion Registry Entries on Windows"
+title: "FixLaunch: Repair Rakion Registry Entries on Windows"
 sidebarTitle: "FixLaunch"
-description: "FixLaunch is a Windows GUI tool that writes the Rakion installation directory and version number into the Windows registry so the launcher can find the game."
+description: "FixLaunch is a Windows GUI tool that writes the Rakion install directory and version into the Windows registry so the launcher can locate the game."
 ---
 
 FixLaunch is a small Windows Forms utility that patches the Windows registry so that the Rakion launcher can locate the game installation. The Rakion launcher reads its install path and version from `HKEY_LOCAL_MACHINE\SOFTWARE\Softnyx\Rakion` at startup — if those values are missing or point to the wrong directory, the launcher will fail to start the game. FixLaunch automates writing those values in a single click.

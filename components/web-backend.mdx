@@ -8,13 +8,60 @@ The Rakion PHP web backend is a small set of scripts that the launcher contacts 
 
 ---
 
+## Configuration — `config.php`
+
+All backend scripts require `config.php` to be included via the `S_include` guard. The file defines database credentials, the shared auth secret, optional login-reward toggles, and the server availability message.
+
+```php
+#MYSQL CONFIG
+define('MYSQL_HOST', "127.0.0.1");
+define('MYSQL_USER', "root");
+define('MYSQL_PASS', "your_password_here");
+define('MYSQL_NAME', "rakion");
+
+#AUTH CLIENT
+define('CLIENT_AUTH', "freeclient");
+
+#ADD GOLD X DAY
+$USER_GOLDL = '25000';
+define('USER_GCVAR', false);
+
+#ADD CASH X DAY
+$USER_CASHL = '25000';
+define('USER_CCVAR', false);
+
+#AUTH DISABLE OR ENABLE
+define('SERVER_ON', true);
+define('SERVER_MSJ_M', "Server Offline");
+```
+
+| Constant / Variable | Type     | Default            | Description                                                                          |
+|---------------------|----------|--------------------|--------------------------------------------------------------------------------------|
+| `MYSQL_HOST`        | string   | `127.0.0.1`        | MySQL server hostname or IP address                                                  |
+| `MYSQL_USER`        | string   | `root`             | MySQL username                                                                       |
+| `MYSQL_PASS`        | string   | *(set in file)*    | MySQL password                                                                       |
+| `MYSQL_NAME`        | string   | `rakion`           | MySQL database name                                                                  |
+| `CLIENT_AUTH`       | string   | `freeclient`       | Shared secret used to generate the login auth token                                  |
+| `USER_GCVAR`        | bool     | `false`            | Enable daily gold reward on login                                                    |
+| `$USER_GOLDL`       | string   | `25000`            | Gold amount awarded per day when `USER_GCVAR` is `true`                              |
+| `USER_CCVAR`        | bool     | `false`            | Enable daily cash reward on login                                                    |
+| `$USER_CASHL`       | string   | `25000`            | Cash amount awarded per day when `USER_CCVAR` is `true`                              |
+| `SERVER_ON`         | bool     | `true`             | When `false`, all login attempts return `SERVER_MSJ_M` instead of authenticating     |
+| `SERVER_MSJ_M`      | string   | `Server Offline`   | Message returned to the launcher when `SERVER_ON` is `false`                        |
+
+<Note>
+  `config.php` opens a PDO connection at include time. If the connection fails, it immediately echoes `[Error]: Auth OFF` and exits, preventing any downstream script from running.
+</Note>
+
+---
+
 ## Authentication — `launcherlogin.php`
 
 Validates a player's credentials and returns a session auth token used by the launcher for the remainder of the session.
 
 ### Endpoint
 
-```
+```text
 GET launcherlogin.php?user=<username>&pass=<hex-encoded-password>
 ```
 
@@ -61,7 +108,7 @@ Returns a structured update manifest when the client version is behind the serve
 
 ### Endpoint
 
-```
+```text
 GET fetch/fetch.php?<AppId>&<clientVersion>
 ```
 
@@ -110,7 +157,7 @@ When an update is available, `fetch.php` returns a plain-text manifest with one 
 
 ### Example Manifest Response
 
-```
+```text
 +https://example.com/notice.html
 =https://files.example.com/rakion/
 ~3;10485760;1046
@@ -127,7 +174,7 @@ Returns the expected SHA-1 hash for a named game file, allowing the launcher to 
 
 ### Endpoint
 
-```
+```text
 GET file.php?f=<filename>&md5=
 ```
 
@@ -154,5 +201,5 @@ GET file.php?f=<filename>&md5=
 ---
 
 <Warning>
-  The `anti_injection()` function strips the keywords `from`, `select`, `insert`, `delete`, `where`, `drop table`, and `show tables` (case-insensitive) from input strings, and also strips all HTML and PHP tags. Do not use any of these reserved words as part of a username or password — they will be silently removed before the database query runs, causing login failures.
+  The `anti_injection()` function strips the following patterns (case-insensitive) from input strings: the SQL keywords `from`, `select`, `insert`, `delete`, `where`, `drop table`, and `show tables`; and the special characters `#`, `*`, `--`, and `\`. It also strips all HTML and PHP tags. Do not use any of these reserved words or characters as part of a username or password — they will be silently removed before the database query runs, causing authentication failures.
 </Warning>

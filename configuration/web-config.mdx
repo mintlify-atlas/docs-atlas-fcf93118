@@ -1,10 +1,10 @@
 ---
-title: "Web Backend Configuration: config.php Reference"
+title: "Web Backend config.php: Full Configuration Reference"
 sidebarTitle: "Web Config"
-description: "All configurable constants and variables in config.php — MySQL credentials, auth token secret, login rewards, and server on/off switch."
+description: "All configurable constants in config.php — MySQL credentials, auth token secret, daily login rewards, server on/off switch, and PDO connection setup."
 ---
 
-`config.php` is the central configuration file for the PHP web backend. It defines the MySQL connection, the authentication token secret, optional daily login rewards, and the server availability toggle. **Edit this file before deploying any web components** — it is included automatically by `launcherlogin.php` and any other endpoint that needs database access.
+`config.php` is the central configuration file for the PHP web backend. It defines the MySQL connection, opens a PDO database handle, sets the authentication token secret, configures optional daily login rewards, and controls the server availability toggle. **Edit this file before deploying any web components** — it is included automatically by `launcherlogin.php` and any other endpoint that needs database access.
 
 ## Complete Example
 
@@ -15,7 +15,7 @@ if(@S_include != "freeclient") exit;
 #MYSQL CONFIG
 define('MYSQL_HOST', "127.0.0.1");
 define('MYSQL_USER', "root");
-define('MYSQL_PASS', "your_secure_password");
+define('MYSQL_PASS', "19734682fgh");
 define('MYSQL_NAME', "rakion");
 
 #AUTH CLIENT
@@ -32,21 +32,31 @@ define('USER_CCVAR', false);
 #AUTH DISABLE OR ENABLE
 define('SERVER_ON', true);
 define('SERVER_MSJ_M', "Server Offline");
+
+try {
+    $pdo = new PDO("mysql:host=" . MYSQL_HOST . ";dbname=" . MYSQL_NAME, MYSQL_USER, MYSQL_PASS);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch(PDOException $e) {
+    echo "[Error]: Auth OFF";
+    exit;
+}
 ```
 
 ---
 
 ## Database
 
+`config.php` establishes a PDO connection immediately after defining the constants. If the connection fails, it echoes `[Error]: Auth OFF` and halts execution. Any endpoint that includes `config.php` inherits the `$pdo` handle directly.
+
 <ParamField path="MYSQL_HOST" type="string" default="127.0.0.1">
   Hostname or IP address of the MySQL server. Use `127.0.0.1` when the web backend and database run on the same machine.
 </ParamField>
 
-<ParamField path="MYSQL_USER" type="string">
+<ParamField path="MYSQL_USER" type="string" default="root">
   MySQL username. This account must have `SELECT`, `UPDATE`, and `REPLACE` privileges on the `rakion` database.
 </ParamField>
 
-<ParamField path="MYSQL_PASS" type="string">
+<ParamField path="MYSQL_PASS" type="string" default="19734682fgh">
   MySQL password for `MYSQL_USER`. **Always change this from the repository default before deploying.**
 </ParamField>
 
@@ -59,15 +69,15 @@ define('SERVER_MSJ_M', "Server Offline");
 ## Authentication
 
 <ParamField path="CLIENT_AUTH" type="string" default="freeclient">
-  A salt string used as the middle component when generating the SHA-1 auth token that is returned to a successfully authenticated launcher client.
+  A salt string used as the middle component when generating the SHA-1 auth token returned to a successfully authenticated launcher client.
 
-  The token is computed as:
+  The token is computed in `launcherlogin.php` as:
 
   ```php
   $get_client = sha1($userx . CLIENT_AUTH . $passx);
   ```
 
-  where `$passx` is the hex-encoded password as sent by the launcher. **The launcher binary must be configured with the same `CLIENT_AUTH` value**, otherwise authentication will succeed at the database level but the token comparison on the client side will fail.
+  where `$passx` is the hex-encoded password string as sent by the launcher via the `pass` GET parameter. **The launcher binary must be configured with the same `CLIENT_AUTH` value**, otherwise authentication will succeed at the database level but the token comparison on the client side will fail.
 </ParamField>
 
 ---
@@ -75,11 +85,17 @@ define('SERVER_MSJ_M', "Server Offline");
 ## Gold Rewards
 
 <ParamField path="$USER_GOLDL" type="string" default="25000">
-  Amount of in-game gold to award to a player on their first login of each day. This value is passed directly into the SQL `UPDATE usergameinfo SET gold=gold+:gold` statement. Only takes effect when `USER_GCVAR` is `true`.
+  Amount of in-game gold to award to a player on their first login within each 24-hour window. Passed into the following SQL statement in `launcherlogin.php`:
+
+  ```sql
+  UPDATE usergameinfo SET gold=gold+:gold WHERE name=:user
+  ```
+
+  Only takes effect when `USER_GCVAR` is `true`.
 </ParamField>
 
 <ParamField path="USER_GCVAR" type="bool" default="false">
-  Set to `true` to enable the daily gold login reward system. When enabled, `launcherlogin.php` checks the `logingold` table on each login and grants `$USER_GOLDL` gold once per 24-hour period per account.
+  Set to `true` to enable the daily gold login reward system. When enabled, `launcherlogin.php` checks the `logingold` table on each login and grants `$USER_GOLDL` gold once per 24-hour period per account, tracking expiry with a `REPLACE INTO logingold(id,date)` upsert.
 </ParamField>
 
 ---
@@ -87,11 +103,17 @@ define('SERVER_MSJ_M', "Server Offline");
 ## Cash Rewards
 
 <ParamField path="$USER_CASHL" type="string" default="25000">
-  Amount of in-game cash (premium currency) to award on first login each day. Passed into `UPDATE cash SET cash=cash+:cash`. Only active when `USER_CCVAR` is `true`.
+  Amount of in-game cash (premium currency) to award on first login within each 24-hour window. Passed into:
+
+  ```sql
+  UPDATE cash SET cash=cash+:cash WHERE id=:user
+  ```
+
+  Only active when `USER_CCVAR` is `true`.
 </ParamField>
 
 <ParamField path="USER_CCVAR" type="bool" default="false">
-  Set to `true` to enable the daily cash login reward system. When enabled, `launcherlogin.php` checks the `logincash` table on each login and grants `$USER_CASHL` cash once per 24-hour period per account.
+  Set to `true` to enable the daily cash login reward system. When enabled, `launcherlogin.php` checks the `logincash` table on each login and grants `$USER_CASHL` cash once per 24-hour period per account, tracked with a `REPLACE INTO logincash(id,date)` upsert.
 </ParamField>
 
 ---
@@ -115,9 +137,9 @@ define('SERVER_MSJ_M', "Server Offline");
 </Warning>
 
 <Tip>
-  Set `SERVER_ON = false` during maintenance windows to gracefully block all new logins. Players will see the `SERVER_MSJ_M` message instead of an error, giving them a clear indication that the server is temporarily unavailable.
+  Set `SERVER_ON = false` during maintenance windows to gracefully block all new logins. Players will see the `SERVER_MSJ_M` message instead of a connection error, giving them a clear indication that the server is temporarily unavailable.
 </Tip>
 
 <Note>
-  `config.php` guards itself with `if(@S_include != "freeclient") exit;` at the top of the file. It **must** be included after `define('S_include', 'freeclient')` has been set, otherwise execution exits immediately with no output. `launcherlogin.php` does this automatically with `@define('S_include', 'freeclient')` before calling `@include_once("config.php")` — if you create additional endpoints that need `config.php`, follow the same pattern.
+  `config.php` guards itself with `if(@S_include != "freeclient") exit;` at the top of the file. It **must** be included after `@define('S_include', 'freeclient')` has been executed, otherwise the file exits immediately with no output. `launcherlogin.php` does this automatically with `@define('S_include', "freeclient")` before calling `@include_once("config.php")`. Any additional endpoint you create that needs `config.php` must follow the same pattern.
 </Note>

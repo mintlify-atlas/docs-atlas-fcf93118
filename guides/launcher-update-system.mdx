@@ -1,7 +1,7 @@
 ---
-title: "Configure the Rakion Launcher Auto-Update System"
+title: "Configure the Rakion Launcher Auto-Update Pipeline"
 sidebarTitle: "Launcher Updates"
-description: "Set up fetchapp and fetchfile database records so the Rakion launcher automatically downloads and applies game file updates to connected clients."
+description: "Set up fetchapp and fetchfile database records so the Rakion launcher automatically downloads and applies game file updates to all connected clients."
 ---
 
 The launcher update system lets you push file updates to all connected clients automatically. When a player launches the game, the client sends its current application ID and version number to `fetch/fetch.php`. The server compares that version against the limit stored in the database and — if the client is behind — returns a manifest listing every file that needs to be downloaded or removed. The client acts on the manifest before starting the game, so players always run the latest files without any manual patching.
@@ -33,7 +33,7 @@ The launcher update system lets you push file updates to all connected clients a
   <Step title="Upload the game files to your file server">
     Place the files clients need to download on a web-accessible file server at the path corresponding to `FileUrl`. For a first release you might create a `v1/` subdirectory:
 
-    ```
+    ```text
     http://update.yourserver.com/files/v1/rakion.bin
     http://update.yourserver.com/files/v1/entitiesmp.dll
     ```
@@ -55,7 +55,7 @@ The launcher update system lets you push file updates to all connected clients a
   <Step title="Test the endpoint">
     Request the manifest directly in a browser or with `curl`, simulating a client at version `0` requesting AppId `1`:
 
-    ```
+    ```http
     GET http://yourserver.com/fetch/fetch.php?1&0
     ```
 
@@ -69,7 +69,7 @@ The launcher update system lets you push file updates to all connected clients a
   <Step title="Upload new files to the file server">
     Place the new version's files on the file server, for example under a `v2/` subdirectory:
 
-    ```
+    ```text
     http://update.yourserver.com/files/v2/engine.dll
     ```
   </Step>
@@ -100,7 +100,7 @@ The launcher update system lets you push file updates to all connected clients a
 
 Below is an example response for a client at version `0` requesting AppId `1`, when the server has two version-1 files and one version-2 file:
 
-```
+```text
 +http://yourserver.com/notice.html
 =http://update.yourserver.com/files/
 ~2;13631488;2

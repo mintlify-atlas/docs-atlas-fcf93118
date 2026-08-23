@@ -1,7 +1,7 @@
 ---
-title: "Rakion Launcher Tools: What Every Component Does"
+title: "Rakion Launcher Tools: Overview of All Five Components"
 sidebarTitle: "Introduction"
-description: "Overview of all tools in the Rakion Launcher Tools suite — AutoQuery, FixLaunch, TexTools, the PHP web backend, and GConfig."
+description: "Overview of every component in the Rakion Launcher Tools suite: AutoQuery, FixLaunch, TexTools, the PHP web backend, and GConfig — plus prerequisites."
 ---
 
 **Rakion Launcher Tools** is a collection of open-source server-side and client-side utilities designed for private Rakion game server operators. The suite covers everything from database maintenance automation and client authentication to texture asset patching and game client registry repair — giving server owners a complete, self-hosted infrastructure to run their private Rakion environment.
@@ -9,22 +9,22 @@ description: "Overview of all tools in the Rakion Launcher Tools suite — AutoQ
 ## What's in the Suite
 
 <CardGroup cols={2}>
-  <Card title="AutoQuery" icon="database">
+  <Card title="AutoQuery" icon="database" href="components/autoquery">
     A .NET console application that connects to the private server's MySQL database and runs periodic stored-procedure calls (e.g. `DeletePending`) on a configurable timer. It reads connection settings and timing parameters from `Settings/Settings.ini` and keeps game-state maintenance running automatically in the background.
   </Card>
-  <Card title="FixLaunch" icon="wrench">
+  <Card title="FixLaunch" icon="wrench" href="components/fixlaunch">
     A Windows Forms utility that writes the Rakion installation path and client version number into the Windows registry under `HKLM\SOFTWARE\Softnyx\Rakion`. Distribute this to players when the registry key is missing or incorrect so the game launcher can find the installation directory.
   </Card>
-  <Card title="TexFix" icon="image">
+  <Card title="TexFix" icon="image" href="components/textools">
     A command-line tool (part of TexTools) that transplants the body of one `.tex` texture file into the 44-byte header of another, producing a patched `_mod.tex` output. Useful for applying texture updates while preserving the original file's encoding metadata.
   </Card>
-  <Card title="TexValidation" icon="magnifying-glass">
+  <Card title="TexValidation" icon="magnifying-glass" href="components/textools">
     A companion command-line tool (part of TexTools) that parses a `.tex` file and prints its full header: version chunk, bit depth, width, height, mipmap count, compression format (`FRMC` for DTX1/DTX3 or `FRMS` for RGB/RGBA), and a hex dump of the remaining data. Use it to validate texture files before deploying them.
   </Card>
-  <Card title="PHP Web Backend" icon="globe">
+  <Card title="PHP Web Backend" icon="globe" href="components/web-backend">
     A lightweight PHP backend with three endpoints. `launcherlogin.php` authenticates players against the MySQL `user` table and returns a SHA-1 session token. `fetch/fetch.php` serves the launcher update manifest (file list, versions, sizes). `file.php` provides SHA-1 checksums for critical game binaries. All three share `config.php` for database credentials and feature flags.
   </Card>
-  <Card title="GConfig" icon="gear">
+  <Card title="GConfig" icon="gear" href="components/gconfig">
     A compiled beta utility (`compiled/gconfig_beta_bin/GConfig.exe`) for editing game configuration files. Distributed as a pre-built binary; no source is included in the repository.
   </Card>
 </CardGroup>

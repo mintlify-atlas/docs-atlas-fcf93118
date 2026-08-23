@@ -1,10 +1,10 @@
 ---
-title: "AutoQuery Settings.ini Configuration Reference"
+title: "AutoQuery Settings.ini: Full Configuration Reference"
 sidebarTitle: "Settings.ini"
-description: "Complete reference for all Settings.ini keys used by AutoQuery — timer interval, MySQL connection, and console debug settings."
+description: "Complete reference for all Settings.ini keys used by AutoQuery — timer interval, MySQL connection, and console debug settings with exact defaults."
 ---
 
-`Settings.ini` is the primary configuration file for the AutoQuery tool. It is read on startup from `Settings\Settings.ini` relative to `AutoQuery.exe`. If the file is not present, AutoQuery logs a warning and falls back to hardcoded defaults.
+`Settings.ini` is the primary configuration file for the AutoQuery tool. It is read on startup from `Settings\Settings.ini` relative to `AutoQuery.exe`. If the file is not present, AutoQuery logs a warning and falls back to hardcoded defaults defined in `Program.cs`.
 
 ## File Layout
 
@@ -28,25 +28,25 @@ debug   = false
 
 ## \[Timer\] Section
 
-Controls how often `CommandsExec` runs and how long the process continues.
+Controls how often `CommandsExec` runs and how long the process continues. At startup, `TimerX` creates a `System.Threading.Timer` with a 2000 ms initial delay, firing every `delay` milliseconds thereafter. The outer loop sleeps for `minutes` minutes between iterations.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `minutes` | int | `10` | Number of minutes the main thread sleeps between each iteration of the execution loop. `CommandsExec` is called inside the `System.Threading.Timer` tick, while this sleep controls the outer loop cadence. |
-| `max` | int | `100` | Maximum number of timer ticks before the process stops. Ignored when `infi = true`. |
-| `delay` | int | `10000` | Milliseconds between each tick of the internal `System.Threading.Timer`. At each tick, `CommandsExec` is called (which runs the `DeletePending` SQL command). |
-| `infi` | bool | `false` | When `true`, the outer loop runs indefinitely (`while (true)`) and `max` is ignored. |
+| Key | Type | File Default | Code Default | Description |
+|-----|------|--------------|--------------|-------------|
+| `minutes` | int | `10` | `10` | Number of minutes the main thread sleeps between each iteration of the execution loop. |
+| `max` | int | `10` | `100` | Maximum number of timer ticks before the process stops. Ignored when `infi = true`. The sample file ships with `10`; the hardcoded fallback in `Program.cs` is `100`. |
+| `delay` | int | `10000` | `10000` | Milliseconds between each tick of the internal `System.Threading.Timer`. At each tick, `CommandsExec` is called (which executes the `DeletePending` SQL command). `10000` equals 10 seconds. |
+| `infi` | bool | `false` | `false` | When `true`, the outer loop runs indefinitely (`while (true)`) and `max` is ignored. |
 
 <ParamField path="minutes" type="int" default="10">
   How many minutes the main thread sleeps between loop iterations. Set this to a longer value (e.g. `60`) for low-traffic servers.
 </ParamField>
 
-<ParamField path="max" type="int" default="100">
-  Maximum timer tick count before AutoQuery exits. Only effective when `infi = false`.
+<ParamField path="max" type="int" default="10">
+  Maximum timer tick count before AutoQuery exits. Only effective when `infi = false`. The sample `Settings.ini` file sets this to `10`; if no file is present the hardcoded fallback in `Program.cs` uses `100`.
 </ParamField>
 
 <ParamField path="delay" type="int" default="10000">
-  Milliseconds between each `System.Threading.Timer` tick. `10000` equals 10 seconds. Lowering this increases how frequently `CommandsExec` is called within each `minutes` window.
+  Milliseconds between each `System.Threading.Timer` tick. `10000` equals 10 seconds. The timer fires with a fixed 2000 ms initial delay regardless of this value. Lowering this increases how frequently `CommandsExec` is called within each `minutes` window.
 </ParamField>
 
 <ParamField path="infi" type="bool" default="false">
@@ -57,7 +57,7 @@ Controls how often `CommandsExec` runs and how long the process continues.
 
 ## \[MYSQL\] Section
 
-MySQL connection parameters used to open the PDO connection on startup.
+MySQL connection parameters used by `MySqlBase` to open the database connection on startup.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -108,6 +108,10 @@ Controls console output verbosity.
 <Warning>
   If `Settings\Settings.ini` is not found, AutoQuery logs `"Settings.ini could not be found, using default setting"` and continues with hardcoded credentials (`root` / `123456` / `127.0.0.1` / `rakion`). Always create the file with secure credentials before deploying to any non-local environment.
 </Warning>
+
+<Note>
+  The `max` key has two distinct defaults: the sample `Settings.ini` ships with `max = 10`, but the fallback value in `Program.cs` (used when no file exists) is `100`. If you rely on the file, the effective default is `10` ticks.
+</Note>
 
 <Tip>
   Set `infi = true` and a long `minutes` value (e.g. `minutes = 60`) for a server that should run continuously without a tick limit. This is the recommended configuration for production deployments.

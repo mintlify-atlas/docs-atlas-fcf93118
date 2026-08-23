@@ -1,7 +1,7 @@
 ---
-title: "Verify Game File Integrity with file.php"
+title: "Verify Rakion Client File Integrity Using file.php"
 sidebarTitle: "File Integrity"
-description: "Use file.php to serve SHA-1 hashes for core Rakion game files so the launcher can detect corrupted or modified client files."
+description: "Use file.php to serve SHA-1 hashes for core Rakion game files so the launcher can detect corrupted or tampered client files before the game starts."
 ---
 
 `file.php` serves known-good SHA-1 hashes for core Rakion game files, allowing the launcher to detect corrupted or tampered client installations. When the launcher starts it queries the endpoint for each protected file, computes a local hash, and compares it against the server-returned value. A mismatch signals that the local file has been corrupted or replaced and the launcher can prompt the user to re-download that file.
@@ -26,12 +26,12 @@ The server returns the SHA-1 hash as a plain-text string with no surrounding mar
 
 **Example — request the hash for `rakion.bin`:**
 
-```
+```http
 GET http://yourserver.com/file.php?f=rakion.bin&md5=
 ```
 
 Response:
-```
+```text
 00994040083d6620daef2bdbb9bf856c712e02f2
 ```
 

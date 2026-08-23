@@ -1,7 +1,7 @@
 ---
-title: "GConfig: Game Configuration Editor for Rakion"
+title: "GConfig: Game Configuration Settings Editor for Rakion"
 sidebarTitle: "GConfig"
-description: "GConfig is a compiled Windows GUI editor for adjusting Rakion server game configuration settings. The binary is available in the compiled/gconfig_beta_bin directory."
+description: "GConfig is a compiled Windows GUI tool for editing Rakion server configuration values. The beta binary ships in the compiled/gconfig_beta_bin directory."
 ---
 
 GConfig is a Windows GUI application that provides a graphical interface for editing the game configuration values used by your Rakion private server. Rather than manually locating and modifying raw configuration files, GConfig presents the available settings in an organised editor, reducing the risk of introducing formatting errors.
@@ -10,7 +10,7 @@ GConfig is a Windows GUI application that provides a graphical interface for edi
 
 The pre-compiled beta binary is included in the repository at:
 
-```
+```text
 compiled/gconfig_beta_bin/GConfig.exe
 ```
 
@@ -19,8 +19,6 @@ No installation is required — run `GConfig.exe` directly from that directory o
 ## What It Does
 
 GConfig lets you view and modify the game server configuration values that the Rakion server process reads at startup. Settings adjusted through the editor are written back to the underlying configuration files, taking effect the next time the server is launched.
-
-> **Note:** GConfig is provided as a compiled beta binary. The source code is not included in this repository. If you need to make changes not supported by the GUI, edit the underlying configuration files directly.
 
 ## Usage
 
@@ -41,5 +39,5 @@ GConfig lets you view and modify the game server configuration values that the R
 </Note>
 
 <Info>
-  GConfig works alongside the other Rakion server tools. Changes made in GConfig affect the game server settings that `BrokenServer.exe` reads when it starts — restart the server process after saving to apply your changes.
+  GConfig works alongside the other Rakion server tools. Restart the server process after saving to apply your changes.
 </Info>
