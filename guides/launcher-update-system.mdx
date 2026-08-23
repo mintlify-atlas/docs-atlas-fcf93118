@@ -1,0 +1,122 @@
+---
+title: "Configure the Rakion Launcher Auto-Update System"
+sidebarTitle: "Launcher Updates"
+description: "Set up fetchapp and fetchfile database records so the Rakion launcher automatically downloads and applies game file updates to connected clients."
+---
+
+The launcher update system lets you push file updates to all connected clients automatically. When a player launches the game, the client sends its current application ID and version number to `fetch/fetch.php`. The server compares that version against the limit stored in the database and — if the client is behind — returns a manifest listing every file that needs to be downloaded or removed. The client acts on the manifest before starting the game, so players always run the latest files without any manual patching.
+
+## How It Works
+
+1. The client launcher sends its `AppId` and current version as a query string to `fetch/fetch.php` — for example `fetch.php?1&0` for AppId `1` at version `0`.
+2. The server reads the `fetchapp` row for that `AppId` and checks `VerLimit` against the client's version.
+3. If the client version equals `VerLimit`, the server returns nothing (client is up to date).
+4. If the client version is _less than_ `VerLimit`, the server returns a manifest:
+   - A notice/changelog URL (`+` line)
+   - The base file-download URL (`=` line)
+   - A summary line (`~` line) with file count, total bytes, and latest version
+   - One line per file to download or remove
+5. The client downloads files from `FileUrl + FileDir` and installs them to the local path specified by `FileIns`.
+
+## Setting Up Your First Update
+
+<Steps>
+  <Step title="Register your application in fetchapp">
+    Insert a row for your launcher application. `AppId` must match the value the client sends, `FileUrl` is the base URL where update files are hosted, `NoticeUrl` is the URL of a changelog or notice page, and `VerLimit` is the version that clients must reach before the server stops sending updates.
+
+    ```sql
+    INSERT INTO `fetchapp` (AppId, FileUrl, NoticeUrl, VerLimit)
+    VALUES (1, 'http://update.yourserver.com/files/', 'http://yourserver.com/notice.html', 1);
+    ```
+  </Step>
+
+  <Step title="Upload the game files to your file server">
+    Place the files clients need to download on a web-accessible file server at the path corresponding to `FileUrl`. For a first release you might create a `v1/` subdirectory:
+
+    ```
+    http://update.yourserver.com/files/v1/rakion.bin
+    http://update.yourserver.com/files/v1/entitiesmp.dll
+    ```
+
+    The file server can be any HTTP server — Apache, Nginx, or a cloud storage bucket with public read access.
+  </Step>
+
+  <Step title="Register the files in fetchfile">
+    Each row in `fetchfile` describes one file the client may need. `Command` is either `M` (modify/add) or `R` (remove). `FileIns` is the local install path on the client (relative to the game directory). `FileDir` is the path appended to `FileUrl` to form the download URL. `FileVer` is the version at which this file was introduced. `FileSize` is the size in bytes.
+
+    ```sql
+    INSERT INTO `fetchfile` (AppId, Command, FileIns, FileDir, FileVer, FileSize)
+    VALUES
+      (1, 'M', '.\\', 'v1/rakion.bin',      1, 10485760),
+      (1, 'M', '.\\', 'v1/entitiesmp.dll',  1, 2097152);
+    ```
+  </Step>
+
+  <Step title="Test the endpoint">
+    Request the manifest directly in a browser or with `curl`, simulating a client at version `0` requesting AppId `1`:
+
+    ```
+    GET http://yourserver.com/fetch/fetch.php?1&0
+    ```
+
+    You should receive a multi-line response. The first character of each line is `+`, `=`, or `~` for the header lines, followed by individual file lines. An empty response means the client is already at `VerLimit`.
+  </Step>
+</Steps>
+
+## Pushing a New Update
+
+<Steps>
+  <Step title="Upload new files to the file server">
+    Place the new version's files on the file server, for example under a `v2/` subdirectory:
+
+    ```
+    http://update.yourserver.com/files/v2/engine.dll
+    ```
+  </Step>
+
+  <Step title="Insert new fetchfile records with the new FileVer">
+    Add rows for every file that changed or was added in the new version. Use the new `FileVer` value so that only clients below this version receive the download:
+
+    ```sql
+    INSERT INTO `fetchfile` (AppId, Command, FileIns, FileDir, FileVer, FileSize)
+    VALUES (1, 'M', '.\\', 'v2/engine.dll', 2, 3145728);
+    ```
+  </Step>
+
+  <Step title="Bump VerLimit in fetchapp">
+    Update `VerLimit` to the new version number. This is the value `fetch.php` compares against the client-reported version:
+
+    ```sql
+    UPDATE `fetchapp` SET VerLimit = 2 WHERE AppId = 1;
+    ```
+  </Step>
+
+  <Step title="Clients receive the update on next launch">
+    The next time a player at version `1` starts the launcher, it will request `fetch.php?1&1`, receive a manifest containing only the `v2/engine.dll` entry (since `FileVer 2 > client version 1`), download it, and advance to version `2`.
+  </Step>
+</Steps>
+
+## Manifest Response Format
+
+Below is an example response for a client at version `0` requesting AppId `1`, when the server has two version-1 files and one version-2 file:
+
+```
++http://yourserver.com/notice.html
+=http://update.yourserver.com/files/
+~2;13631488;2
+M;v2/engine.dll;.\\;2;3145728
+M;v1/rakion.bin;.\\;1;10485760
+```
+
+| Line prefix | Meaning |
+|---|---|
+| `+` | Notice/changelog URL — displayed to the player before patching begins |
+| `=` | Base file download URL — prepended to every `FileDir` value to form the full download URL |
+| `~` | Summary: `file count ; total bytes ; latest version` |
+| File line | `Command ; FileDir ; FileIns ; FileVer ; FileSize` |
+
+The `fetch.php` implementation (in `source/web/fetch/fetch.php`) selects all `fetchfile` rows where `FileVer > clientVersion AND AppId = appId`, so only the delta for the requesting client's version is returned.
+
+<Note>
+  Command `M` means **modify/add** — the file at `FileUrl + FileDir` is downloaded and saved to `FileIns` on the client. Command `R` means **remove** — the file at `FileIns + FileDir` on the client is deleted. Use `R` rows to clean up obsolete files from previous versions.
+</Note>

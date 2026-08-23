@@ -1,0 +1,50 @@
+---
+title: "FixLaunch: Fix Rakion Registry Entries on Windows"
+sidebarTitle: "FixLaunch"
+description: "FixLaunch is a Windows GUI tool that writes the Rakion installation directory and version number into the Windows registry so the launcher can find the game."
+---
+
+FixLaunch is a small Windows Forms utility that patches the Windows registry so that the Rakion launcher can locate the game installation. The Rakion launcher reads its install path and version from `HKEY_LOCAL_MACHINE\SOFTWARE\Softnyx\Rakion` at startup — if those values are missing or point to the wrong directory, the launcher will fail to start the game. FixLaunch automates writing those values in a single click.
+
+## How It Works
+
+When FixLaunch.exe is opened, it reads `Environment.CurrentDirectory` and pre-fills the first text box with the detected path. The user then enters the client version number in the second text box. Clicking **Apply** causes the application to:
+
+1. Iterate over each character in the directory path and double any backslash (`\` → `\\`) to produce the escaped path string stored in the registry.
+2. Open (or create) the registry key `HKEY_LOCAL_MACHINE\SOFTWARE\Softnyx\Rakion` via `Registry.LocalMachine.CreateSubKey`.
+3. Write the `Location` value as the escaped path string (REG_SZ).
+4. Write the `Version` value as an integer parsed from the text box (REG_DWORD).
+5. Display a **"Complete!"** message box on success, or an error dialog if an exception occurs.
+
+### Registry Key Written
+
+| Key Path                              | Value Name | Value Type | Example Content       |
+|---------------------------------------|------------|------------|-----------------------|
+| `HKLM\SOFTWARE\Softnyx\Rakion`        | `Location` | String     | `C:\\\\Rakion`        |
+| `HKLM\SOFTWARE\Softnyx\Rakion`        | `Version`  | Integer    | `1045`                |
+
+> **Note on escaped paths:** Backslashes in the path are doubled before being stored in the registry. For example, a directory of `C:\Rakion` is stored as `C:\\Rakion`. This matches the format that the Rakion launcher expects when it reads the `Location` value.
+
+## Usage
+
+<Steps>
+  <Step title="Place FixLaunch.exe in the Rakion game directory">
+    Copy `FixLaunch.exe` into the root folder of your Rakion installation (the directory that contains the game executable). The tool will detect this location automatically.
+  </Step>
+  <Step title="Run FixLaunch.exe as Administrator">
+    Right-click `FixLaunch.exe` and choose **Run as administrator**. Writing to `HKEY_LOCAL_MACHINE` requires elevated privileges.
+  </Step>
+  <Step title="Verify the detected directory">
+    The first text box is automatically populated with the current directory. Confirm that it shows the correct Rakion installation path.
+  </Step>
+  <Step title="Enter the client version number">
+    Type the Rakion client version number into the second text box (e.g. `1045`). This must be an integer that matches the version your launcher expects.
+  </Step>
+  <Step title="Click Apply">
+    Click the **Apply** button. A dialog box reading **"Complete!"** will appear when the registry values have been written successfully.
+  </Step>
+</Steps>
+
+<Warning>
+  FixLaunch.exe must be run as Administrator. Writing to `HKEY_LOCAL_MACHINE` is a privileged operation — if the process is not elevated, the registry write will fail with an "Access is denied" error displayed in an error dialog.
+</Warning>

@@ -1,0 +1,76 @@
+---
+title: "Verify Game File Integrity with file.php"
+sidebarTitle: "File Integrity"
+description: "Use file.php to serve SHA-1 hashes for core Rakion game files so the launcher can detect corrupted or modified client files."
+---
+
+`file.php` serves known-good SHA-1 hashes for core Rakion game files, allowing the launcher to detect corrupted or tampered client installations. When the launcher starts it queries the endpoint for each protected file, computes a local hash, and compares it against the server-returned value. A mismatch signals that the local file has been corrupted or replaced and the launcher can prompt the user to re-download that file.
+
+## Supported Files and Their Hashes
+
+The following files are protected by the default `file.php` implementation. The hashes correspond to specific official binary versions and are hardcoded directly in the source file (`source/web/file.php`).
+
+| Filename | SHA-1 Hash |
+|---|---|
+| `rakion.bin` | `00994040083d6620daef2bdbb9bf856c712e02f2` |
+| `entitiesmp.dll` | `fd5fa6f022ff5dcd644160f434735096feba18a8` |
+| `engine.dll` | `4193ac14e5333ac61a230ee32cbb1ab51d624008` |
+| `buddy2.dll` | `96a4bdd43baa596b5c3d4aa5cd482f66faf8622d` |
+| `datasetup.xfs` | `fef007c327f022a43d73b60aaeca51e45d0fd267` |
+
+## API Usage
+
+**Endpoint:** `GET file.php?f=<filename>&md5=`
+
+The server returns the SHA-1 hash as a plain-text string with no surrounding markup or newline. The `md5` query parameter is accepted for compatibility with the client protocol but its value is ignored by the current implementation — only `f` is used.
+
+**Example — request the hash for `rakion.bin`:**
+
+```
+GET http://yourserver.com/file.php?f=rakion.bin&md5=
+```
+
+Response:
+```
+00994040083d6620daef2bdbb9bf856c712e02f2
+```
+
+**Special values:**
+
+| Request | Response | Notes |
+|---|---|---|
+| `f=md5` | `0` | Special MD5-mode probe; always returns `0` |
+| `f=<unknown filename>` | `Que Haces ?` | File is not in the protected list |
+
+## Updating the Hashes
+
+If you distribute modified or re-compiled game files, you must update the corresponding hash values in `file.php` to match your binaries. Generate a fresh SHA-1 hash for the file you changed:
+
+```bash
+# Linux / macOS
+sha1sum rakion.bin
+```
+
+```powershell
+# PowerShell (Windows)
+Get-FileHash -Algorithm SHA1 rakion.bin
+```
+
+Then open `source/web/file.php` and update the matching `echo` statement. For example, to update the `engine.dll` hash:
+
+```php
+} else if ($gf == "engine.dll") {
+    // engine.dll
+    echo "YOUR_NEW_SHA1_HASH_HERE";
+}
+```
+
+Deploy the updated `file.php` to your web server to start serving the new hash.
+
+<Warning>
+  The hashes hardcoded in `file.php` correspond to specific official game file versions. If you distribute patched or custom-compiled files and **do not** update the hashes, the launcher will flag those files as corrupted and may prevent players from connecting.
+</Warning>
+
+<Note>
+  The `md5` query parameter value is ignored by the current implementation — only the `f` parameter is read. The parameter exists because the client protocol includes it in the request URL, but `file.php` performs no MD5 computation or comparison of its own.
+</Note>

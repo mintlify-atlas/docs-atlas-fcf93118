@@ -1,47 +1,160 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Your Rakion Private Server Running in 5 Steps"
+sidebarTitle: "Quickstart"
+description: "Import the database, deploy the PHP auth backend, configure AutoQuery, fix the client registry, and verify file integrity in under 30 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide walks you through the minimum steps to get a private Rakion server operational — from an empty MySQL instance to a running server with authenticated players. All steps assume you have a Windows machine for the C# tools, a PHP-capable web server, and a MySQL 5.5+ database already reachable.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+<Note>
+  The default `Settings.ini` and `config.php` both ship with placeholder credentials (`root` / `123456` and `root` / `19734682fgh` respectively). **Change every password before exposing any endpoint to the internet.** A compromised database can corrupt all player data.
+</Note>
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Import the database schema">
+    Load the full Rakion schema and seed data into MySQL. The repository includes a single consolidated SQL dump at `database/rakion_all.sql` that creates all required tables (including `user`, `usergameinfo`, `cash`, `logingold`, `logincash`, `fetchapp`, and `fetchfile`).
+
+    Run the following command from your terminal, substituting your actual MySQL root password:
 
     ```bash
-    npm install your-package
+    mysql -u root -p rakion < database/rakion_all.sql
+    ```
+
+    If the `rakion` database does not exist yet, create it first:
+
+    ```bash
+    mysql -u root -p -e "CREATE DATABASE rakion CHARACTER SET utf8 COLLATE utf8_general_ci;"
+    mysql -u root -p rakion < database/rakion_all.sql
+    ```
+
+    Confirm the import succeeded by checking that the tables are present:
+
+    ```bash
+    mysql -u root -p -e "SHOW TABLES;" rakion
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Deploy the PHP web backend">
+    Copy the entire `source/web/` directory to your web server's document root (e.g. `/var/www/html/rakion/` or `C:\xampp\htdocs\rakion\`).
+
+    Open `config.php` and update every setting to match your environment:
+
+    ```php
+    <?php
+    // Prevent direct inclusion without the guard constant
+    if(@S_include != "freeclient") exit;
+
+    # MYSQL CONFIG
+    define('MYSQL_HOST', "127.0.0.1");   // MySQL server IP
+    define('MYSQL_USER', "root");        // MySQL username
+    define('MYSQL_PASS', "19734682fgh"); // MySQL password — CHANGE THIS
+    define('MYSQL_NAME', "rakion");      // Database name
+
+    # AUTH CLIENT — must match the token the launcher sends
+    define('CLIENT_AUTH', "freeclient");
+
+    # ADD GOLD PER DAY (set USER_GCVAR to true to enable)
+    $USER_GOLDL = '25000';
+    define('USER_GCVAR', false);
+
+    # ADD CASH PER DAY (set USER_CCVAR to true to enable)
+    $USER_CASHL = '25000';
+    define('USER_CCVAR', false);
+
+    # SERVER STATE — set to false to show maintenance message
+    define('SERVER_ON', true);
+    define('SERVER_MSJ_M', "Server Offline");
     ```
+
+    The constants and their meanings:
+
+    | Constant / Variable | Purpose |
+    |---|---|
+    | `MYSQL_HOST` | IP or hostname of your MySQL server |
+    | `MYSQL_USER` | MySQL user with read/write access to `rakion` |
+    | `MYSQL_PASS` | Password for `MYSQL_USER` |
+    | `MYSQL_NAME` | Target database name (default: `rakion`) |
+    | `CLIENT_AUTH` | Shared secret appended when building the SHA-1 session token |
+    | `$USER_GOLDL` | Amount of gold awarded to a player on each daily login |
+    | `USER_GCVAR` | Enable (`true`) or disable (`false`) daily gold rewards |
+    | `$USER_CASHL` | Amount of cash awarded to a player on each daily login |
+    | `USER_CCVAR` | Enable (`true`) or disable (`false`) daily cash rewards |
+    | `SERVER_ON` | `true` = auth active; `false` = all login attempts return `SERVER_MSJ_M` |
+    | `SERVER_MSJ_M` | Message returned to the launcher when `SERVER_ON` is `false` |
+
+    Also update the database credentials inside `fetch/fetch.php` — it has its own inline connection block with `MYSQL_USER_REPLACE_HERE` and `MYSQl_PASSWORD_REPLACE_HERE` placeholders.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="Configure AutoQuery">
+    AutoQuery reads its settings from `Settings/Settings.ini`, located relative to `AutoQuery.exe`. Create that file (or edit the existing one) with the following content:
+
+    ```ini
+    [Timer]
+    minutes = 10
+    max     = 10
+    delay   = 10000
+    infi    = false
+
+    [MYSQL]
+    user    = root
+    pass    = 123456
+    ipsv    = 127.0.0.1
+    port    = 3306
+    data    = rakion
+
+    [CONSOLE]
+    debug   = false
     ```
+
+    Configuration key reference:
+
+    | Section | Key | Default | Description |
+    |---|---|---|---|
+    | `[Timer]` | `minutes` | `10` | Interval in minutes between each stored-procedure execution |
+    | `[Timer]` | `max` | `10` | Maximum number of executions before AutoQuery exits (ignored when `infi=true`) |
+    | `[Timer]` | `delay` | `10000` | Initial delay in milliseconds before the first execution |
+    | `[Timer]` | `infi` | `false` | Set to `true` to run indefinitely, ignoring `max` |
+    | `[MYSQL]` | `user` | `root` | MySQL username |
+    | `[MYSQL]` | `pass` | `123456` | MySQL password — **change this** |
+    | `[MYSQL]` | `ipsv` | `127.0.0.1` | MySQL server IP address |
+    | `[MYSQL]` | `port` | `3306` | MySQL server port |
+    | `[MYSQL]` | `data` | `rakion` | Target database name |
+    | `[CONSOLE]` | `debug` | `false` | Enable verbose console output |
+
+    If `Settings.ini` is missing, AutoQuery falls back to the compiled-in defaults and logs: `Settings.ini could not be found, using default setting`.
+  </Step>
+
+  <Step title="Run AutoQuery.exe">
+    Launch `AutoQuery.exe` (from `compiled/launcher_bin/` or built from `source/AutoQuery/`). On startup it:
+
+    1. Loads and parses `Settings/Settings.ini`.
+    2. Opens a persistent connection to your MySQL server using the `[MYSQL]` credentials.
+    3. Starts the `TimerX` loop, which calls `Program.CommandsExec()` at each interval — executing the `DeletePending` stored procedure to clean up expired session records.
+
+    You should see the following console output on a successful start:
+
+    ```
+    Has loaded your settings successfully
+    ```
+
+    Keep AutoQuery running as a background process (or register it as a Windows Service) for continuous database maintenance. When `infi = false`, it will exit automatically after `max` executions.
+  </Step>
+
+  <Step title="Distribute FixLaunch.exe to players">
+    Players who cannot launch the game because the Rakion registry key is missing or points to the wrong path need to run `FixLaunch.exe` (found in `compiled/launcher_bin/`).
+
+    When the player opens FixLaunch:
+
+    1. The **current working directory** is automatically detected and shown in the first text field.
+    2. The player enters the **client version number** (integer) matching the version the server expects.
+    3. Clicking the button writes two values into `HKLM\SOFTWARE\Softnyx\Rakion`:
+       - `Location` — the installation path (backslashes escaped for registry compatibility)
+       - `Version` — the integer version number
+
+    Include FixLaunch in your server's client download package and document the correct version number so players can self-serve this repair without contacting support.
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  During scheduled maintenance or patch deployments, set `SERVER_ON` to `false` in `config.php`. The launcher will receive the `SERVER_MSJ_M` message (e.g. `"Server Offline"`) instead of a session token, preventing new logins without requiring you to take the web server offline. Remember to flip it back to `true` when maintenance is complete.
 </Tip>

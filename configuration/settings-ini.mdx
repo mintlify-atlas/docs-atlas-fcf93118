@@ -1,0 +1,114 @@
+---
+title: "AutoQuery Settings.ini Configuration Reference"
+sidebarTitle: "Settings.ini"
+description: "Complete reference for all Settings.ini keys used by AutoQuery — timer interval, MySQL connection, and console debug settings."
+---
+
+`Settings.ini` is the primary configuration file for the AutoQuery tool. It is read on startup from `Settings\Settings.ini` relative to `AutoQuery.exe`. If the file is not present, AutoQuery logs a warning and falls back to hardcoded defaults.
+
+## File Layout
+
+```ini Settings/Settings.ini
+[Timer]
+minutes = 10
+max     = 10
+delay   = 10000
+infi    = false
+[MYSQL]
+user    = root
+pass    = 123456
+ipsv    = 127.0.0.1
+port    = 3306
+data    = rakion
+[CONSOLE]
+debug   = false
+```
+
+---
+
+## \[Timer\] Section
+
+Controls how often `CommandsExec` runs and how long the process continues.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `minutes` | int | `10` | Number of minutes the main thread sleeps between each iteration of the execution loop. `CommandsExec` is called inside the `System.Threading.Timer` tick, while this sleep controls the outer loop cadence. |
+| `max` | int | `100` | Maximum number of timer ticks before the process stops. Ignored when `infi = true`. |
+| `delay` | int | `10000` | Milliseconds between each tick of the internal `System.Threading.Timer`. At each tick, `CommandsExec` is called (which runs the `DeletePending` SQL command). |
+| `infi` | bool | `false` | When `true`, the outer loop runs indefinitely (`while (true)`) and `max` is ignored. |
+
+<ParamField path="minutes" type="int" default="10">
+  How many minutes the main thread sleeps between loop iterations. Set this to a longer value (e.g. `60`) for low-traffic servers.
+</ParamField>
+
+<ParamField path="max" type="int" default="100">
+  Maximum timer tick count before AutoQuery exits. Only effective when `infi = false`.
+</ParamField>
+
+<ParamField path="delay" type="int" default="10000">
+  Milliseconds between each `System.Threading.Timer` tick. `10000` equals 10 seconds. Lowering this increases how frequently `CommandsExec` is called within each `minutes` window.
+</ParamField>
+
+<ParamField path="infi" type="bool" default="false">
+  Set to `true` to run AutoQuery indefinitely. When enabled, `max` is ignored and the process only stops when killed externally.
+</ParamField>
+
+---
+
+## \[MYSQL\] Section
+
+MySQL connection parameters used to open the PDO connection on startup.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `user` | string | `root` | MySQL username. |
+| `pass` | string | `123456` | MySQL password. |
+| `ipsv` | string | `127.0.0.1` | MySQL server host IP or hostname. |
+| `port` | int | `3306` | MySQL server port. |
+| `data` | string | `rakion` | MySQL database name. |
+
+<ParamField path="user" type="string" default="root">
+  The MySQL user account AutoQuery will authenticate as.
+</ParamField>
+
+<ParamField path="pass" type="string" default="123456">
+  The MySQL password for `user`. **Change this before deploying.**
+</ParamField>
+
+<ParamField path="ipsv" type="string" default="127.0.0.1">
+  Hostname or IP address of the MySQL server. Use `127.0.0.1` when AutoQuery runs on the same machine as the database.
+</ParamField>
+
+<ParamField path="port" type="int" default="3306">
+  TCP port the MySQL server is listening on.
+</ParamField>
+
+<ParamField path="data" type="string" default="rakion">
+  The MySQL database (schema) name that AutoQuery will execute statements against.
+</ParamField>
+
+---
+
+## \[CONSOLE\] Section
+
+Controls console output verbosity.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `debug` | bool | `false` | When `true`, verbose debug messages are written to the console via `LogConsole`. |
+
+<ParamField path="debug" type="bool" default="false">
+  Enable verbose console logging. Useful during initial setup to confirm that settings loaded correctly and SQL commands are executing.
+</ParamField>
+
+---
+
+## Callouts
+
+<Warning>
+  If `Settings\Settings.ini` is not found, AutoQuery logs `"Settings.ini could not be found, using default setting"` and continues with hardcoded credentials (`root` / `123456` / `127.0.0.1` / `rakion`). Always create the file with secure credentials before deploying to any non-local environment.
+</Warning>
+
+<Tip>
+  Set `infi = true` and a long `minutes` value (e.g. `minutes = 60`) for a server that should run continuously without a tick limit. This is the recommended configuration for production deployments.
+</Tip>

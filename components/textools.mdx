@@ -1,0 +1,133 @@
+---
+title: "TexTools: Patch and Inspect Rakion Texture Files"
+sidebarTitle: "TexTools"
+description: "TexFix patches .tex texture files by transplanting their header, while TexValidation parses and prints all header fields including compression format and dimensions."
+---
+
+Rakion stores textures in a proprietary `.tex` binary format. Every `.tex` file begins with a fixed **44-byte header** that carries metadata including version, dimensions, mipmap count, compression type, and animation offset. TexTools Alpha ships two command-line programs for working with these files: **TexFix** for surgically patching texture data, and **TexValidation** for inspecting and validating header contents.
+
+<Note>
+  TexTools Alpha is also available as a pre-compiled package at `compiled/TexToolsAlpha.rar` if you do not want to build from source.
+</Note>
+
+---
+
+## TexFix
+
+TexFix transplants the 44-byte header from an existing (original) `.tex` file onto a new `.tex` body. This is useful when you have replaced texture image data but need the original metadata header to remain intact so the game engine can parse the file correctly.
+
+### Usage
+
+```
+TexFix.exe <original.tex> <new.tex>
+```
+
+| Argument        | Description                                                       |
+|-----------------|-------------------------------------------------------------------|
+| `<original.tex>` | Source file whose 44-byte header will be used                   |
+| `<new.tex>`      | File whose body (bytes 45 onward) will be used                  |
+
+### Output
+
+TexFix writes the combined result to a new file named `<new>_mod.tex` in the current directory. The original and new files are left untouched.
+
+### Example
+
+```
+TexFix.exe skin_original.tex skin_new.tex
+# Output: skin_new_mod.tex
+```
+
+### How It Works
+
+1. Reads the first 44 bytes from `<original.tex>` — this is the header.
+2. Reads `<new.tex>`, skips the first 44 bytes, then reads the remainder as the new body.
+3. Writes the original header followed by the new body to `<new>_mod.tex`.
+
+---
+
+## TexValidation
+
+TexValidation parses a `.tex` file's 44-byte header and prints every field to the console in a human-readable format. It also determines the compression format from the header values and hex-dumps any remaining data after the header.
+
+### Usage
+
+```
+TexValidation.exe <file.tex>
+```
+
+### Output Fields
+
+The following fields are read sequentially from the header and printed to stdout:
+
+| Field           | Type         | Description                                                             |
+|-----------------|--------------|-------------------------------------------------------------------------|
+| `version_chunk` | 4-byte ASCII | File type magic string                                                  |
+| `version`       | int32        | File format version number                                              |
+| `data_chunk`    | 4-byte ASCII | Data section marker                                                     |
+| `enc_bits`      | uint32       | Encoding/compression discriminator — determines the compression format |
+| `enc_width`     | uint32       | Texture width in pixels                                                 |
+| `enc_height`    | uint32       | Texture height in pixels                                                |
+| `enc_mipmap`    | uint32       | Number of mipmap levels                                                 |
+| `enc_shift`     | uint32       | Encoding shift value                                                    |
+| `enc_uknown`    | uint32       | Reserved / unknown (typically all `1`)                                  |
+| `format_chunk`  | 4-byte ASCII | Compression format tag: `FRMC` (compressed) or `FRMS` (uncompressed)  |
+| `anim_offset`   | int32        | Offset into the file for animation data                                 |
+
+### Compression Rules
+
+The `format_chunk` and `enc_bits` values together determine how texture data is encoded:
+
+**`FRMC` format (compressed textures)**
+
+| `enc_bits` value | Compression       | Bit depth |
+|------------------|-------------------|-----------|
+| `4` or `13`      | DTX1 — no alpha   | 24-bit    |
+| Any other value  | DTX3 — with alpha | 32-bit    |
+
+**`FRMS` format (uncompressed textures)**
+
+| `enc_bits` value | Pixel format |
+|------------------|--------------|
+| `0` or `2`       | RGB          |
+| Any other value  | RGBA         |
+
+---
+
+## `PacketReader` Class
+
+Both TexFix and TexValidation use `PacketReader` to walk through the raw bytes of a `.tex` file. It maintains an internal cursor (`Position`) that advances automatically with each read call.
+
+### Constructor
+
+```csharp
+public PacketReader(byte[] data)
+```
+
+Wraps the supplied byte array. The `Buffer` property exposes the underlying array.
+
+### Methods
+
+| Method                     | Return Type | Description                                                                 |
+|----------------------------|-------------|-----------------------------------------------------------------------------|
+| `ReadInt16()`              | `short`     | Reads a signed 16-bit integer and advances the cursor by 2                 |
+| `ReadInt32()`              | `int`       | Reads a signed 32-bit integer and advances the cursor by 4                 |
+| `ReadUint16()`             | `ushort`    | Reads an unsigned 16-bit integer and advances the cursor by 2              |
+| `ReadUint32()`             | `uint`      | Reads an unsigned 32-bit integer and advances the cursor by 4              |
+| `ReadUint64()`             | `ulong`     | Reads an unsigned 64-bit integer and advances the cursor by 8              |
+| `ReadByte()`               | `byte`      | Reads a single byte and advances the cursor by 1                           |
+| `ReadBytes(len)`           | `byte[]`    | Reads `len` bytes into a new array and advances the cursor by `len`        |
+| `ReadFloat()`              | `float`     | Reads a 32-bit IEEE 754 float and advances the cursor by 4                 |
+| `ReadCode()`               | `string`    | Reads a null-terminated ASCII string and advances past the null terminator |
+| `ReadASCII(length)`        | `string`    | Reads exactly `length` bytes as an ASCII string                            |
+| `ReadUnicode(length)`      | `string`    | Reads `length` characters as a UTF-16 Unicode string (advances by `length * 2`) |
+| `SkipBytes(count)`         | `void`      | Advances the cursor by `count` bytes without reading                       |
+| `ReturnPost(i)`            | `void`      | Moves the cursor back by `i` bytes                                         |
+| `good()`                   | `bool`      | Returns `true` if the cursor has not passed the end of the buffer          |
+
+### Properties
+
+| Property   | Type  | Description                                     |
+|------------|-------|-------------------------------------------------|
+| `Position` | `int` | Gets or sets the current cursor position        |
+| `Buffer`   | `byte[]` | The underlying byte array passed to the constructor |

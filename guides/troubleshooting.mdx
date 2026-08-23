@@ -1,0 +1,177 @@
+---
+title: "Troubleshooting Common Rakion Server Issues"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose and fix common issues with AutoQuery, the PHP web backend, FixLaunch, and the launcher update system."
+---
+
+This page covers the most frequently encountered problems when running a Rakion private server and explains exactly what causes each one and how to resolve it. Issues are grouped by component.
+
+## AutoQuery
+
+<AccordionGroup>
+  <Accordion title="AutoQuery cannot connect to MySQL">
+    **Symptoms:** The console prints a connection error and AutoQuery does not execute any SQL.
+
+    **Cause:** The MySQL credentials or host in `Settings/Settings.ini` are wrong, MySQL is not running, or a firewall is blocking port 3306.
+
+    **Fix:**
+    1. Open `Settings/Settings.ini` and verify the `[MYSQL]` section values (`user`, `pass`, `ipsv`, `port`, `data`) match your MySQL installation.
+    2. Confirm MySQL is running: `sc query MySQL` (Windows) or `systemctl status mysql` (Linux).
+    3. Ensure port 3306 is not blocked by Windows Firewall or any network ACL between AutoQuery and the database host.
+
+    AutoQuery will retry the connection automatically every `delay` milliseconds (default 10 000 ms / 10 seconds) — it does not exit on a connection failure.
+  </Accordion>
+
+  <Accordion title="AutoQuery stops after N iterations">
+    **Symptoms:** AutoQuery runs for a while and then exits silently.
+
+    **Cause:** `infi` is `false` (the default) and AutoQuery has reached the number of iterations specified by `max`.
+
+    **Fix:** Set `infi=true` in the `[Timer]` section of `Settings/Settings.ini` to run indefinitely:
+
+    ```ini
+    [Timer]
+    minutes = 10
+    max     = 10
+    delay   = 10000
+    infi    = true
+    ```
+
+    When `infi` is `true`, the `max` value is ignored and AutoQuery loops forever until the process is stopped.
+  </Accordion>
+
+  <Accordion title="Settings.ini not found">
+    **Symptoms:** AutoQuery prints `Settings.ini could not be found, using default setting` and falls back to built-in defaults (`root` / `123456` / `127.0.0.1`).
+
+    **Cause:** The file is missing or placed in the wrong location. AutoQuery constructs the path as `<current working directory>\Settings\Settings.ini`, so the `Settings` subfolder must exist next to the executable.
+
+    **Fix:** Ensure the directory structure looks like this:
+
+    ```
+    AutoQuery.exe
+    Settings\
+        Settings.ini
+    ```
+
+    Do not place `Settings.ini` directly next to `AutoQuery.exe` — it must be inside the `Settings` subdirectory.
+  </Accordion>
+</AccordionGroup>
+
+## PHP Web Backend
+
+<AccordionGroup>
+  <Accordion title="Auth returns [Error]: Auth OFF">
+    **Symptoms:** The launcher or a direct request to `launcherlogin.php` returns the literal string `[Error]: Auth OFF`.
+
+    **Cause:** The PDO connection to MySQL failed. This is the error emitted by the `catch (PDOException $e)` block in `config.php` when the initial connection attempt throws an exception.
+
+    **Fix:** Open `config.php` and double-check all four database constants:
+
+    ```php
+    define('MYSQL_HOST', "127.0.0.1");
+    define('MYSQL_USER', "rakionuser");
+    define('MYSQL_PASS', "your-secure-password");
+    define('MYSQL_NAME', "rakion");
+    ```
+
+    Verify that the MySQL server is running and that the credentials grant access from the host where PHP is executing. Test the connection manually with `mysql -h 127.0.0.1 -u rakionuser -p rakion`.
+  </Accordion>
+
+  <Accordion title="Auth returns nothing / blank response">
+    **Symptoms:** `launcherlogin.php` returns an empty response even with valid credentials.
+
+    **Cause:** `SERVER_ON` is `false` in `config.php`. When `SERVER_ON` is false and the request omits or fails authentication, `launcherlogin.php` falls through without echoing anything.
+
+    **Fix:** Set `SERVER_ON` to `true` in `config.php`:
+
+    ```php
+    define('SERVER_ON', true);
+    ```
+  </Accordion>
+
+  <Accordion title="Launcher shows 'Server Offline'">
+    **Symptoms:** The game launcher displays the `SERVER_MSJ_M` message (default `"Server Offline"`) instead of proceeding to login.
+
+    **Cause:** `SERVER_ON` is set to `false` in `config.php`. This is by design — it is the maintenance-mode flag. `launcherlogin.php` echoes `SERVER_MSJ_M` when the server is switched off.
+
+    **Fix:** Change `SERVER_ON` to `true`:
+
+    ```php
+    define('SERVER_ON', true);
+    ```
+
+    You can also customise the offline message by editing `SERVER_MSJ_M` before toggling the server off for maintenance.
+  </Accordion>
+
+  <Accordion title="fetch.php returns 'Error'">
+    **Symptoms:** Requesting `fetch/fetch.php` returns the literal string `Error`.
+
+    **Cause:** The `AppId` or version parameters in the query string are not valid integers. `fetch.php` validates both values with `is_numeric()` and `round()` and exits with `Error` if either check fails.
+
+    **Fix:** Confirm the launcher is constructing the URL correctly — both parameters must be plain integers with no extra characters:
+
+    ```
+    fetch.php?1&0        ✅  AppId=1, version=0
+    fetch.php?app1&v0    ❌  fails is_numeric check
+    ```
+
+    Also verify that any reverse proxy or URL rewriting rules are not modifying the raw query string before it reaches PHP.
+  </Accordion>
+
+  <Accordion title="No files returned by fetch.php">
+    **Symptoms:** `fetch.php` returns an empty response even though you expect updates to be available.
+
+    **Cause:** One of two conditions:
+    - The client's reported version already equals `VerLimit` in `fetchapp` (the client is up to date). `fetch.php` calls `exit()` immediately in this case.
+    - No `fetchfile` rows exist with `FileVer` greater than the client's reported version for the given `AppId`.
+
+    **Fix:**
+    1. Run `SELECT VerLimit FROM fetchapp WHERE AppId = 1;` and compare it to the version number the client is sending.
+    2. Run `SELECT COUNT(*) FROM fetchfile WHERE AppId = 1 AND FileVer > <clientVersion>;` and confirm rows exist.
+    3. If `VerLimit` equals the client version, either bump `VerLimit` to a higher value or the client is genuinely up to date.
+  </Accordion>
+</AccordionGroup>
+
+## FixLaunch
+
+<AccordionGroup>
+  <Accordion title="Access denied writing registry">
+    **Symptoms:** FixLaunch shows an error dialog containing an access-denied or permissions message when you click Apply.
+
+    **Cause:** FixLaunch writes to `HKEY_LOCAL_MACHINE\SOFTWARE\Softnyx\Rakion`, which requires administrator privileges. Running as a standard user will throw an `UnauthorizedAccessException`.
+
+    **Fix:** Right-click `FixLaunch.exe` and choose **Run as administrator**. UAC will prompt for elevation. The write operation will then succeed and you will see the "Complete!" dialog.
+  </Accordion>
+
+  <Accordion title="Version field is empty — nothing happens after clicking Apply">
+    **Symptoms:** Clicking the Apply button does nothing, or the registry `Version` value is not written.
+
+    **Cause:** FixLaunch guards the Apply logic with `if (textBox2.Text != "")`. If the version text box is empty, the entire button handler is skipped with no error message.
+
+    **Fix:** Enter the client version number (an integer) in the version text box before clicking Apply. This value is written as an `int` to the registry key `Version` under `HKLM\SOFTWARE\Softnyx\Rakion`.
+  </Accordion>
+</AccordionGroup>
+
+## TexTools
+
+<AccordionGroup>
+  <Accordion title="TexFix produces a blank or zero-byte output file">
+    **Symptoms:** Running `TexFix.exe original.tex nuevo.tex` completes but the output `nuevo_mod.tex` is empty or much smaller than expected.
+
+    **Cause:** TexFix reads exactly 44 bytes from the _original_ file as the header (`ori_read.ReadBytes(44)`) and then reads everything after byte 44 from the _nuevo_ file as the body. If either input file is shorter than 44 bytes, the header or body array will be undersized, resulting in a truncated or empty output.
+
+    **Fix:** Ensure both input `.tex` files are valid Rakion texture files of at least 44 bytes. Use `TexValidation.exe` to confirm the files parse correctly before passing them to TexFix.
+  </Accordion>
+
+  <Accordion title="TexValidation shows 'No Work!'">
+    **Symptoms:** Running `TexValidation.exe myfile.tex` prints `No Work!` to the console.
+
+    **Cause:** The file is not a valid Rakion `.tex` file or is corrupted. `TexValidation` parses the binary header — reading 4-byte ASCII chunks (`VERS`, `DATA`, `FRMC`/`FRMS`), integers, and unsigned integers — and wraps all reads in a `try/catch`. Any read failure (wrong magic bytes, truncated file, incorrect structure) falls into the `catch` block and prints `No Work!`.
+
+    **Fix:** Verify the file is a genuine Rakion texture file. Check the file size and compare the first four bytes — a valid file should begin with a recognisable version chunk string. Re-extract or re-download the file from a known-good source if it is corrupted.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  For more verbose diagnostic output, enable debug logging in each component's settings file. In AutoQuery's `Settings/Settings.ini`, set `debug=true` under `[CONSOLE]`. In BrokenServer's `Settings/Settings.ini`, set `debug=1` under `[CONSOLE]`. Both components will then print additional runtime information to the console that can help pinpoint connection and processing issues.
+</Tip>

@@ -1,0 +1,123 @@
+---
+title: "Web Backend Configuration: config.php Reference"
+sidebarTitle: "Web Config"
+description: "All configurable constants and variables in config.php — MySQL credentials, auth token secret, login rewards, and server on/off switch."
+---
+
+`config.php` is the central configuration file for the PHP web backend. It defines the MySQL connection, the authentication token secret, optional daily login rewards, and the server availability toggle. **Edit this file before deploying any web components** — it is included automatically by `launcherlogin.php` and any other endpoint that needs database access.
+
+## Complete Example
+
+```php source/web/config.php
+<?php
+if(@S_include != "freeclient") exit;
+
+#MYSQL CONFIG
+define('MYSQL_HOST', "127.0.0.1");
+define('MYSQL_USER', "root");
+define('MYSQL_PASS', "your_secure_password");
+define('MYSQL_NAME', "rakion");
+
+#AUTH CLIENT
+define('CLIENT_AUTH', "freeclient");
+
+#ADD GOLD X DAY
+$USER_GOLDL = '25000';
+define('USER_GCVAR', false);
+
+#ADD CASH X DAY
+$USER_CASHL = '25000';
+define('USER_CCVAR', false);
+
+#AUTH DISABLE OR ENABLE
+define('SERVER_ON', true);
+define('SERVER_MSJ_M', "Server Offline");
+```
+
+---
+
+## Database
+
+<ParamField path="MYSQL_HOST" type="string" default="127.0.0.1">
+  Hostname or IP address of the MySQL server. Use `127.0.0.1` when the web backend and database run on the same machine.
+</ParamField>
+
+<ParamField path="MYSQL_USER" type="string">
+  MySQL username. This account must have `SELECT`, `UPDATE`, and `REPLACE` privileges on the `rakion` database.
+</ParamField>
+
+<ParamField path="MYSQL_PASS" type="string">
+  MySQL password for `MYSQL_USER`. **Always change this from the repository default before deploying.**
+</ParamField>
+
+<ParamField path="MYSQL_NAME" type="string" default="rakion">
+  MySQL database (schema) name that the web backend operates against.
+</ParamField>
+
+---
+
+## Authentication
+
+<ParamField path="CLIENT_AUTH" type="string" default="freeclient">
+  A salt string used as the middle component when generating the SHA-1 auth token that is returned to a successfully authenticated launcher client.
+
+  The token is computed as:
+
+  ```php
+  $get_client = sha1($userx . CLIENT_AUTH . $passx);
+  ```
+
+  where `$passx` is the hex-encoded password as sent by the launcher. **The launcher binary must be configured with the same `CLIENT_AUTH` value**, otherwise authentication will succeed at the database level but the token comparison on the client side will fail.
+</ParamField>
+
+---
+
+## Gold Rewards
+
+<ParamField path="$USER_GOLDL" type="string" default="25000">
+  Amount of in-game gold to award to a player on their first login of each day. This value is passed directly into the SQL `UPDATE usergameinfo SET gold=gold+:gold` statement. Only takes effect when `USER_GCVAR` is `true`.
+</ParamField>
+
+<ParamField path="USER_GCVAR" type="bool" default="false">
+  Set to `true` to enable the daily gold login reward system. When enabled, `launcherlogin.php` checks the `logingold` table on each login and grants `$USER_GOLDL` gold once per 24-hour period per account.
+</ParamField>
+
+---
+
+## Cash Rewards
+
+<ParamField path="$USER_CASHL" type="string" default="25000">
+  Amount of in-game cash (premium currency) to award on first login each day. Passed into `UPDATE cash SET cash=cash+:cash`. Only active when `USER_CCVAR` is `true`.
+</ParamField>
+
+<ParamField path="USER_CCVAR" type="bool" default="false">
+  Set to `true` to enable the daily cash login reward system. When enabled, `launcherlogin.php` checks the `logincash` table on each login and grants `$USER_CASHL` cash once per 24-hour period per account.
+</ParamField>
+
+---
+
+## Server State
+
+<ParamField path="SERVER_ON" type="bool" default="true">
+  Master toggle for the authentication endpoint. When set to `false`, `launcherlogin.php` will not process any login attempts and instead returns the value of `SERVER_MSJ_M` directly to the client.
+</ParamField>
+
+<ParamField path="SERVER_MSJ_M" type="string" default="Server Offline">
+  The plain-text message returned to the launcher when `SERVER_ON` is `false`. The launcher displays this string to the player.
+</ParamField>
+
+---
+
+## Callouts
+
+<Warning>
+  Change both `MYSQL_PASS` and `CLIENT_AUTH` before deploying. The repository ships with well-known default values — leaving them unchanged exposes your database and allows any client that has read the source code to forge valid auth tokens.
+</Warning>
+
+<Tip>
+  Set `SERVER_ON = false` during maintenance windows to gracefully block all new logins. Players will see the `SERVER_MSJ_M` message instead of an error, giving them a clear indication that the server is temporarily unavailable.
+</Tip>
+
+<Note>
+  `config.php` guards itself with `if(@S_include != "freeclient") exit;` at the top of the file. It **must** be included after `define('S_include', 'freeclient')` has been set, otherwise execution exits immediately with no output. `launcherlogin.php` does this automatically with `@define('S_include', 'freeclient')` before calling `@include_once("config.php")` — if you create additional endpoints that need `config.php`, follow the same pattern.
+</Note>

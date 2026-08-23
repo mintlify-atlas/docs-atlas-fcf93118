@@ -1,0 +1,45 @@
+---
+title: "GConfig: Game Configuration Editor for Rakion"
+sidebarTitle: "GConfig"
+description: "GConfig is a compiled Windows GUI editor for adjusting Rakion server game configuration settings. The binary is available in the compiled/gconfig_beta_bin directory."
+---
+
+GConfig is a Windows GUI application that provides a graphical interface for editing the game configuration values used by your Rakion private server. Rather than manually locating and modifying raw configuration files, GConfig presents the available settings in an organised editor, reducing the risk of introducing formatting errors.
+
+## Location
+
+The pre-compiled beta binary is included in the repository at:
+
+```
+compiled/gconfig_beta_bin/GConfig.exe
+```
+
+No installation is required — run `GConfig.exe` directly from that directory on any Windows machine.
+
+## What It Does
+
+GConfig lets you view and modify the game server configuration values that the Rakion server process reads at startup. Settings adjusted through the editor are written back to the underlying configuration files, taking effect the next time the server is launched.
+
+> **Note:** GConfig is provided as a compiled beta binary. The source code is not included in this repository. If you need to make changes not supported by the GUI, edit the underlying configuration files directly.
+
+## Usage
+
+<Steps>
+  <Step title="Open GConfig.exe">
+    Navigate to `compiled/gconfig_beta_bin/` and double-click `GConfig.exe`, or launch it from the command line. No administrator privileges are required unless your configuration files are stored in a protected directory.
+  </Step>
+  <Step title="Modify configuration values">
+    Use the graphical interface to locate and change the game server configuration settings you want to adjust. All available options are presented in the editor panes.
+  </Step>
+  <Step title="Save your changes">
+    Use the save action in the application to write your changes to the configuration files. Changes are not applied until the server is restarted.
+  </Step>
+</Steps>
+
+<Note>
+  GConfig is provided as a compiled beta binary. If you need to make changes not supported by the GUI, edit the underlying configuration files directly.
+</Note>
+
+<Info>
+  GConfig works alongside the other Rakion server tools. Changes made in GConfig affect the game server settings that `BrokenServer.exe` reads when it starts — restart the server process after saving to apply your changes.
+</Info>

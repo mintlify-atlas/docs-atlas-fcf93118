@@ -1,0 +1,168 @@
+---
+title: "AutoQuery: Scheduled MySQL Maintenance for Rakion"
+sidebarTitle: "AutoQuery"
+description: "AutoQuery runs MySQL stored procedures on a configurable timer to keep your Rakion database clean. Configure via Settings.ini and run as a Windows service."
+---
+
+AutoQuery is a lightweight C# console application that periodically executes MySQL stored procedures against your Rakion database. Its primary purpose is routine maintenance — by running on a configurable timer it keeps the database clean without any manual intervention, making it ideal for unattended server deployments.
+
+## What It Does
+
+At every timer tick, AutoQuery calls `Program.CommandsExec()`, which invokes the `DeletePending` stored procedure via `MySqlBase.CommandSQL()`. That procedure performs a full delete of every row in the `pendingpresents` table:
+
+```sql
+CREATE PROCEDURE `DeletePending`()
+BEGIN
+    DELETE FROM `pendingpresents`;
+END
+```
+
+This clears accumulated pending present records that would otherwise build up indefinitely and bloat the database.
+
+## Configuration
+
+AutoQuery reads its settings from `Settings\Settings.ini` in the application directory. If the file is not found, built-in defaults are used.
+
+### Settings.ini Reference
+
+| Section   | Key       | Default       | Description                                                       |
+|-----------|-----------|---------------|-------------------------------------------------------------------|
+| `[Timer]` | `minutes` | `10`          | Interval between timer cycles, in minutes                        |
+| `[Timer]` | `max`     | `100`         | Maximum number of timer ticks before the process exits           |
+| `[Timer]` | `delay`   | `10000`       | Initial delay before the first tick fires, in milliseconds       |
+| `[Timer]` | `infi`    | `false`       | When `true`, the timer runs indefinitely (ignores `max`)         |
+| `[MYSQL]` | `user`    | `root`        | MySQL username                                                    |
+| `[MYSQL]` | `pass`    | `123456`      | MySQL password                                                    |
+| `[MYSQL]` | `ipsv`    | `127.0.0.1`   | MySQL server hostname or IP address                              |
+| `[MYSQL]` | `port`    | `3306`        | MySQL server port                                                 |
+| `[MYSQL]` | `data`    | `rakion`      | MySQL database name                                              |
+| `[CONSOLE]` | `debug` | `false`       | Enable verbose debug output to the console                       |
+
+### Default Settings.ini
+
+```ini
+[Timer]
+minutes = 10
+max     = 10
+delay   = 10000
+infi    = false
+[MYSQL]
+user    = root
+pass    = 123456
+ipsv    = 127.0.0.1
+port    = 3306
+data    = rakion
+[CONSOLE]
+debug   = false
+```
+
+## API Reference
+
+### `MySqlBase` Class
+
+`MySqlBase` wraps a persistent `MySqlConnection` and provides helper methods for all database operations used across the application.
+
+#### `Init(host, user, password, database, port)`
+
+```csharp
+public void Init(string host, string user, string password, string database, int port)
+```
+
+Opens the MySQL connection using the supplied credentials. If the connection fails with a `MySqlException`, the error is logged, and the method sleeps for 5 seconds before retrying recursively. The process will not continue past `Init` until a connection is established.
+
+#### `Execute(sql, params[])`
+
+```csharp
+public bool Execute(string sql, params object[] args)
+```
+
+Runs a non-query SQL statement (INSERT, UPDATE, DELETE, etc.) with parameterised arguments. Returns `true` on success or `false` if a `MySqlException` is thrown.
+
+#### `Select(sql, params[])`
+
+```csharp
+public SQLResult Select(string sql, params object[] args)
+```
+
+Runs a SELECT statement with parameterised arguments and returns a `SQLResult` (a `DataTable` subclass). The `Count` property on the result holds the number of returned rows.
+
+#### `ExecuteBigQuery(table, fields, fieldCount, resultCount, values, resultAsIndex)`
+
+```csharp
+public void ExecuteBigQuery(string table, string fields, int fieldCount, int resultCount,
+                            object[] values, bool resultAsIndex = true)
+```
+
+Builds and executes a bulk `INSERT INTO <table> (<fields>) VALUES (…), (…)` statement from the supplied `values` array. `fieldCount` is the number of columns per row; `resultCount` is the number of rows to insert. When `resultAsIndex` is `true` the row index is used to look up values in the array.
+
+#### `CommandSQL(procedureName)`
+
+```csharp
+public void CommandSQL(string _comm)
+```
+
+Calls a MySQL stored procedure by name using `CommandType.StoredProcedure`. After successful execution, the procedure name followed by `" Complete!"` is written to the console log.
+
+---
+
+### `TimerX` Class
+
+```csharp
+public TimerX(double minutes, double max_ct, bool _inf, int _del)
+```
+
+Constructs and immediately starts a timer. At each tick the timer calls `Program.CommandsExec()`. Parameters:
+
+| Parameter | Type     | Description                                                            |
+|-----------|----------|------------------------------------------------------------------------|
+| `minutes` | `double` | How long each timer cycle lasts in minutes (governs the `Thread.Sleep` loop) |
+| `max_ct`  | `double` | Maximum number of ticks. Ignored when `_inf` is `true`                |
+| `_inf`    | `bool`   | When `true`, the timer runs in an infinite loop                       |
+| `_del`    | `int`    | Delay before the underlying `System.Threading.Timer` fires its first tick (milliseconds) |
+
+The first tick is always delayed by 2 000 ms (hardcoded) regardless of the `delay` setting; `delay` governs subsequent ticks.
+
+---
+
+### `SQLResult` Class
+
+`SQLResult` extends `System.Data.DataTable` and adds two convenience members:
+
+#### `Count` property
+
+```csharp
+public int Count { get; set; }
+```
+
+The number of rows returned by the last `Select` call.
+
+#### `Read<T>(row, columnName)`
+
+```csharp
+public T Read<T>(int row, string columnName, int number = 0)
+```
+
+Type-safe accessor for a single cell in the result set. `row` is the zero-based row index; `columnName` is the column name. The optional `number` parameter appends a numeric suffix to the column name (e.g. `number = 1` appends `"2"`). Example:
+
+```csharp
+SQLResult result = _SQL.Select("SELECT gold FROM usergameinfo WHERE name=?", username);
+int gold = result.Read<int>(0, "gold");
+```
+
+## Running AutoQuery in Infinite Mode
+
+To run AutoQuery continuously without it ever exiting, set `infi = true` and `max = 0` in `Settings.ini`:
+
+```ini
+[Timer]
+minutes = 10
+max     = 0
+delay   = 10000
+infi    = true
+```
+
+With this configuration the process will fire `DeletePending` every 10 minutes until it is killed or the server shuts down.
+
+<Note>
+  AutoQuery will keep retrying the database connection every 5 seconds on failure. The process will not start executing stored procedures until a successful connection is made, so it is safe to start AutoQuery before the MySQL server is fully ready.
+</Note>

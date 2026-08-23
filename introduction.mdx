@@ -1,0 +1,73 @@
+---
+title: "Rakion Launcher Tools: What Every Component Does"
+sidebarTitle: "Introduction"
+description: "Overview of all tools in the Rakion Launcher Tools suite — AutoQuery, FixLaunch, TexTools, the PHP web backend, and GConfig."
+---
+
+**Rakion Launcher Tools** is a collection of open-source server-side and client-side utilities designed for private Rakion game server operators. The suite covers everything from database maintenance automation and client authentication to texture asset patching and game client registry repair — giving server owners a complete, self-hosted infrastructure to run their private Rakion environment.
+
+## What's in the Suite
+
+<CardGroup cols={2}>
+  <Card title="AutoQuery" icon="database">
+    A .NET console application that connects to the private server's MySQL database and runs periodic stored-procedure calls (e.g. `DeletePending`) on a configurable timer. It reads connection settings and timing parameters from `Settings/Settings.ini` and keeps game-state maintenance running automatically in the background.
+  </Card>
+  <Card title="FixLaunch" icon="wrench">
+    A Windows Forms utility that writes the Rakion installation path and client version number into the Windows registry under `HKLM\SOFTWARE\Softnyx\Rakion`. Distribute this to players when the registry key is missing or incorrect so the game launcher can find the installation directory.
+  </Card>
+  <Card title="TexFix" icon="image">
+    A command-line tool (part of TexTools) that transplants the body of one `.tex` texture file into the 44-byte header of another, producing a patched `_mod.tex` output. Useful for applying texture updates while preserving the original file's encoding metadata.
+  </Card>
+  <Card title="TexValidation" icon="magnifying-glass">
+    A companion command-line tool (part of TexTools) that parses a `.tex` file and prints its full header: version chunk, bit depth, width, height, mipmap count, compression format (`FRMC` for DTX1/DTX3 or `FRMS` for RGB/RGBA), and a hex dump of the remaining data. Use it to validate texture files before deploying them.
+  </Card>
+  <Card title="PHP Web Backend" icon="globe">
+    A lightweight PHP backend with three endpoints. `launcherlogin.php` authenticates players against the MySQL `user` table and returns a SHA-1 session token. `fetch/fetch.php` serves the launcher update manifest (file list, versions, sizes). `file.php` provides SHA-1 checksums for critical game binaries. All three share `config.php` for database credentials and feature flags.
+  </Card>
+  <Card title="GConfig" icon="gear">
+    A compiled beta utility (`compiled/gconfig_beta_bin/GConfig.exe`) for editing game configuration files. Distributed as a pre-built binary; no source is included in the repository.
+  </Card>
+</CardGroup>
+
+## Prerequisites
+
+Before deploying any component, ensure your environment meets these requirements:
+
+| Requirement | Details |
+|---|---|
+| **Operating System** | Windows (required for C# tools: AutoQuery, FixLaunch, TexTools, GConfig) |
+| **PHP** | PHP 7.0 or later with PDO and PDO\_MySQL extensions enabled |
+| **Web Server** | Apache, Nginx, or any web server capable of serving PHP |
+| **MySQL** | MySQL 5.5 or later (the database schema in `database/rakion_all.sql` targets MySQL 5.5+) |
+| **.NET Framework** | .NET Framework 4.x (required to build and run C# projects from source) |
+
+## Repository Layout
+
+The repository is organized as follows:
+
+```
+RakionLauncher/
+├── source/
+│   ├── AutoQuery/       # C# console app — periodic MySQL stored-procedure runner
+│   ├── FixLaunch/       # C# WinForms app — client registry repair tool
+│   ├── TexTools/
+│   │   ├── TexFix/      # C# console app — .tex header transplant utility
+│   │   └── TexValidation/ # C# console app — .tex header inspector/validator
+│   └── web/
+│       ├── config.php         # Shared database credentials and feature flags
+│       ├── launcherlogin.php  # Player authentication endpoint
+│       ├── file.php           # Binary checksum endpoint
+│       └── fetch/
+│           └── fetch.php      # Launcher update manifest endpoint
+├── compiled/
+│   ├── launcher_bin/          # Pre-built launcher binaries
+│   ├── gconfig_beta_bin/      # Pre-built GConfig.exe
+│   └── TexToolsAlpha.rar      # Pre-built TexTools archive
+├── database/
+│   └── rakion_all.sql         # Full MySQL schema and seed data
+└── tools/                     # Additional helper scripts
+```
+
+## License
+
+All source code in this repository is distributed under the **GNU General Public License v3.0 (GPL-3.0)**. You are free to use, modify, and redistribute the code under the terms of that license. See the `LICENSE` file at the repository root for the full license text.

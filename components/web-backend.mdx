@@ -1,0 +1,158 @@
+---
+title: "PHP Web Backend: Auth, Updates, and File Integrity"
+sidebarTitle: "Web Backend"
+description: "The PHP backend handles launcher authentication, per-login gold and cash rewards, the file update fetch API, and SHA-1 file integrity checks for game DLLs."
+---
+
+The Rakion PHP web backend is a small set of scripts that the launcher contacts to authenticate players, check for client updates, and verify the integrity of game files. All scripts share a single `config.php` that centralises the database credentials and feature-flag constants. The backend uses PDO for all database access, keeping queries parameterised and safe from SQL injection at the driver level.
+
+---
+
+## Authentication — `launcherlogin.php`
+
+Validates a player's credentials and returns a session auth token used by the launcher for the remainder of the session.
+
+### Endpoint
+
+```
+GET launcherlogin.php?user=<username>&pass=<hex-encoded-password>
+```
+
+<ParamField query="user" type="string" required>
+  The player's account username.
+</ParamField>
+
+<ParamField query="pass" type="string" required>
+  The player's password, **hex-encoded** by the launcher before sending. The backend decodes it with `hexToStr()`, lowercases the result, and then passes it through `anti_injection()` before querying the database.
+</ParamField>
+
+### Authentication Flow
+
+1. Both `user` and `pass` are sanitised with `anti_injection()`.
+2. `pass` is hex-decoded via `hexToStr()`, lowercased, and sanitised again.
+3. A prepared query checks `SELECT * FROM user WHERE id=:user AND password=:password`.
+4. On a successful match the response is `sha1($user . CLIENT_AUTH . $pass)` — a SHA-1 token derived from the username, the shared `CLIENT_AUTH` secret defined in `config.php`, and the original hex-encoded password string.
+5. On a failed match the response is `[Error]: 1`.
+6. If `SERVER_ON` is `false` in `config.php`, the value of `SERVER_MSJ_M` is returned instead (default: `"Server Offline"`).
+
+### Daily Gold Reward
+
+When `USER_GCVAR` is set to `true` in `config.php`, each successful login triggers a daily gold award:
+
+- Checks the `logingold` table for the user's last reward date.
+- If the stored expiry date has elapsed (i.e. `stored_date <= now`), adds `$USER_GOLDL` gold to `usergameinfo.gold` for that user.
+- Updates `logingold` with a new expiry timestamp 24 hours in the future.
+- Default award: **25,000 gold** per day.
+
+### Daily Cash Reward
+
+When `USER_CCVAR` is set to `true` in `config.php`, an identical flow awards cash:
+
+- Checks the `logincash` table for the user's last cash reward date.
+- If expired, adds `$USER_CASHL` cash to `cash.cash` for that user.
+- Updates `logincash` with a new 24-hour expiry.
+- Default award: **25,000 cash** per day.
+
+---
+
+## Update Fetch — `fetch/fetch.php`
+
+Returns a structured update manifest when the client version is behind the server's expected version.
+
+### Endpoint
+
+```
+GET fetch/fetch.php?<AppId>&<clientVersion>
+```
+
+The query string is parsed as a raw `&`-delimited pair — not standard key=value notation. Both values must be integers; non-integer values return `Error`.
+
+<ParamField query="AppId" type="integer" required>
+  Identifies the application in the `fetchapp` database table.
+</ParamField>
+
+<ParamField query="clientVersion" type="integer" required>
+  The client's current version number, as reported by the launcher.
+</ParamField>
+
+### Response Logic
+
+| Condition                          | Response          |
+|------------------------------------|-------------------|
+| `VerLimit == clientVersion`        | Empty body (client is up to date) |
+| `VerLimit > clientVersion`         | Update manifest (see below)       |
+| Any other case                     | `Error`           |
+
+### Manifest Format
+
+When an update is available, `fetch.php` returns a plain-text manifest with one entry per line:
+
+<ResponseField name="+ (NoticeUrl)" type="string">
+  A line beginning with `+` contains the notice/announcement URL to display to the user before downloading.
+</ResponseField>
+
+<ResponseField name="= (FileUrl)" type="string">
+  A line beginning with `=` contains the base URL from which update files will be downloaded.
+</ResponseField>
+
+<ResponseField name="~ (summary)" type="string">
+  A line beginning with `~` contains `count;totalFileSize;verLimit` — the total number of files to update, their combined byte size, and the target version number.
+</ResponseField>
+
+<ResponseField name="File records" type="string">
+  Each remaining line describes one file: `Command;FileDir;FileIns;FileVer;FileSize`.
+  - `Command` — `M` to add or modify the file, `R` to remove it.
+  - `FileDir` — relative path of the file on the download server.
+  - `FileIns` — relative installation path on the client.
+  - `FileVer` — the version number at which this file was introduced.
+  - `FileSize` — file size in bytes.
+</ResponseField>
+
+### Example Manifest Response
+
+```
++https://example.com/notice.html
+=https://files.example.com/rakion/
+~3;10485760;1046
+M;patches/1046/update.pak;data/update.pak;1046;5242880
+M;patches/1046/maps.pak;data/maps.pak;1046;3145728
+R;patches/1046/old.pak;data/old.pak;1046;2097152
+```
+
+---
+
+## File Integrity — `file.php`
+
+Returns the expected SHA-1 hash for a named game file, allowing the launcher to verify that installed files have not been tampered with.
+
+### Endpoint
+
+```
+GET file.php?f=<filename>&md5=
+```
+
+<ParamField query="f" type="string" required>
+  The filename to look up. Must be one of the known filenames listed below.
+</ParamField>
+
+<ParamField query="md5" type="string">
+  Unused placeholder parameter retained for launcher compatibility.
+</ParamField>
+
+### Known File Hashes
+
+| Filename          | SHA-1 Hash                                 |
+|-------------------|--------------------------------------------|
+| `rakion.bin`      | `00994040083d6620daef2bdbb9bf856c712e02f2` |
+| `entitiesmp.dll`  | `fd5fa6f022ff5dcd644160f434735096feba18a8` |
+| `engine.dll`      | `4193ac14e5333ac61a230ee32cbb1ab51d624008` |
+| `buddy2.dll`      | `96a4bdd43baa596b5c3d4aa5cd482f66faf8622d` |
+| `datasetup.xfs`   | `fef007c327f022a43d73b60aaeca51e45d0fd267` |
+| `md5`             | `0` (special sentinel value)               |
+| *(unknown)*       | `Que Haces ?`                              |
+
+---
+
+<Warning>
+  The `anti_injection()` function strips the keywords `from`, `select`, `insert`, `delete`, `where`, `drop table`, and `show tables` (case-insensitive) from input strings, and also strips all HTML and PHP tags. Do not use any of these reserved words as part of a username or password — they will be silently removed before the database query runs, causing login failures.
+</Warning>

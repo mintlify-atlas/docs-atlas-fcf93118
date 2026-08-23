@@ -1,0 +1,96 @@
+---
+title: "fetchapp and fetchfile: Launcher Update Tables"
+sidebarTitle: "Fetch Tables"
+description: "How to populate fetchapp and fetchfile to deliver client file updates through the Rakion launcher fetch API endpoint."
+---
+
+The `fetchapp` and `fetchfile` tables power the Rakion launcher's automatic update system. When the launcher starts, it calls `fetch/fetch.php` with its current application ID and version number. The PHP endpoint queries these two tables to determine whether any new files need to be downloaded, then returns a structured manifest the launcher uses to update itself. Adding or changing a file in the client requires nothing more than inserting rows into `fetchfile` and bumping `VerLimit` in `fetchapp`.
+
+---
+
+## `fetchapp` Table
+
+One row per application (typically one row for the Rakion launcher). Defines the base download URL and the current target version.
+
+**Schema**
+
+| Column | Type | Description |
+|---|---|---|
+| `AppId` | `INT` | Primary key. Numeric identifier for the application / launcher instance. |
+| `FileUrl` | `VARCHAR(50)` | Base URL from which update files are downloaded. All `fetchfile.FileDir` paths are appended to this value. |
+| `NoticeUrl` | `VARCHAR(50)` | URL of the update notice or changelog page shown to the user during an update. |
+| `VerLimit` | `INT` | The current latest version number for this application. Clients whose version is lower than this will receive an update manifest. |
+
+**Example — registering an application**
+
+```sql
+INSERT INTO `fetchapp` (AppId, FileUrl, NoticeUrl, VerLimit)
+VALUES (1, 'http://update.yourserver.com/files/', 'http://yourserver.com/notice.html', 5);
+```
+
+---
+
+## `fetchfile` Table
+
+One row per file action. Each row describes a single file that must be added, replaced, or removed when a client upgrades from an older version to the current `VerLimit`.
+
+**Schema**
+
+| Column | Type | Description |
+|---|---|---|
+| `AppId` | `INT` | Must match a `fetchapp.AppId`. Associates this file record with a specific application. |
+| `Command` | `ENUM('M','R')` | `M` = Modify/Add the file (download and install). `R` = Remove the file (delete from client). |
+| `FileIns` | `VARCHAR(50)` | Installation path (destination directory on the client), e.g. `.\\` defaults to the game root folder. |
+| `FileDir` | `VARCHAR(50)` | The file's path and name relative to `FileUrl`. The launcher downloads `FileUrl + FileDir`. |
+| `FileVer` | `INT` | The version at which this file was added or changed. Only records with `FileVer` greater than the client's current version are sent. |
+| `FileSize` | `INT` | Size of the file in bytes. Used by the launcher to calculate total download size and display a progress bar. Set to `0` for `R` (remove) records. |
+
+**Example — adding files for version 3 and removing an old file**
+
+```sql
+-- Add a new game file at version 3
+INSERT INTO `fetchfile` (AppId, Command, FileIns, FileDir, FileVer, FileSize)
+VALUES (1, 'M', '.\\', 'patch_v3/rakion.bin', 3, 10485760);
+
+-- Remove an obsolete file at version 4
+INSERT INTO `fetchfile` (AppId, Command, FileIns, FileDir, FileVer, FileSize)
+VALUES (1, 'R', '.\\', 'old_file.dll', 4, 0);
+```
+
+---
+
+## How the Fetch API Uses These Tables
+
+The flow from client launcher to file download works as follows:
+
+1. **Client request** — The launcher sends its current `AppId` and `ver` (current version) as a query string to `fetch/fetch.php`, e.g. `fetch.php?1&3`.
+
+2. **App lookup** — The PHP queries `fetchapp WHERE AppId = :app`. If no row is found, the script returns nothing. If `VerLimit == ver`, the client is already up to date and the script exits silently.
+
+3. **Manifest header** — When `VerLimit > ver`, the script echoes three header lines to the launcher:
+   - `+<NoticeUrl>` — the changelog URL to display
+   - `=<FileUrl>` — the base download URL
+   - `~<count>;<totalBytes>;<VerLimit>` — file count, total download size, and target version
+
+4. **File records** — The PHP then queries:
+   ```sql
+   SELECT * FROM `fetchfile` WHERE FileVer > :ver AND AppId = :app
+   ```
+   Each matching row is returned as a semicolon-delimited line:
+   ```
+   <Command>;<FileDir>;<FileIns>;<FileVer>;<FileSize>
+   ```
+
+5. **Client action** — For each `M` record the launcher downloads `FileUrl + FileDir` to `FileIns`. For each `R` record it deletes the local file at `FileIns + FileDir`.
+
+6. **Version bump** — To release a new update, insert the new file rows into `fetchfile` with the new `FileVer`, then `UPDATE fetchapp SET VerLimit = <newVer> WHERE AppId = 1`. All clients below that version will receive the update on their next launch.
+
+---
+
+<Note>
+  `FileVer` must be less than or equal to `VerLimit`. Only records with `FileVer` **greater than** the client's current version are sent, so rows are cumulative — a client on version 1 will receive all `fetchfile` rows with `FileVer` 2, 3, 4, etc. in a single update pass.
+</Note>
+
+<Tip>
+  Keep `FileSize` accurate for every `M` record. The launcher sums all `FileSize` values from the manifest to display the total download progress bar to the user.
+</Tip>

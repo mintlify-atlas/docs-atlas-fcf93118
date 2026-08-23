@@ -1,0 +1,171 @@
+---
+title: "System Architecture of Rakion Launcher Tools"
+sidebarTitle: "Architecture"
+description: "How AutoQuery, the PHP web backend, FixLaunch, TexTools, and GConfig interconnect to support a private Rakion server."
+---
+
+The Rakion Launcher Tools suite is built around a shared MySQL database (`rakion`) that acts as the single source of truth for authentication state, player economy data, file update manifests, and pending session cleanup. Each component talks to one or more of its tables, and all coordination happens through SQL rather than inter-process communication — making the system straightforward to host on a single machine or to distribute across separate servers.
+
+<Note>
+  Every component — `launcherlogin.php`, `fetch/fetch.php`, `file.php`, and `AutoQuery` — connects to the same MySQL database named `rakion`. Ensure all components use consistent credentials and that the database is reachable from every host running a component.
+</Note>
+
+## Component Overview
+
+<CardGroup cols={2}>
+  <Card title="Client Side — FixLaunch" icon="desktop">
+    Runs once on the player's machine to write the game installation path and version number into `HKLM\SOFTWARE\Softnyx\Rakion`. Without a valid registry key the Rakion launcher cannot locate its installation directory. FixLaunch is a one-shot repair tool distributed alongside the game client.
+  </Card>
+  <Card title="Web Layer — PHP Backend" icon="server">
+    Three PHP endpoints served over HTTP. `launcherlogin.php` authenticates players and returns a session token. `fetch/fetch.php` returns the file-update manifest. `file.php` returns SHA-1 checksums for critical game binaries. All three share `config.php` for database credentials and feature-flag configuration.
+  </Card>
+  <Card title="Database Layer — MySQL / rakion" icon="database">
+    The central `rakion` MySQL database holds the `user` table for credentials, `usergameinfo` and `cash` for economy state, `logingold` and `logincash` for daily-reward tracking, `fetchapp` and `fetchfile` for the launcher update system, and any stored procedures (e.g. `DeletePending`) called by AutoQuery.
+  </Card>
+  <Card title="Maintenance — AutoQuery" icon="clock">
+    A headless .NET console application that runs on the server and fires on a configurable timer. At each tick it executes the `DeletePending` stored procedure via `CommandSQL`, removing stale session records from the database. It runs indefinitely when `infi=true` or for a fixed number of cycles otherwise.
+  </Card>
+  <Card title="Asset Tools — TexTools" icon="file-image">
+    Two standalone command-line utilities for working with Rakion `.tex` texture files. **TexFix** transplants pixel data from a new texture into the header of an original, producing a `_mod.tex` patch file. **TexValidation** parses and prints a texture file's full 44-byte header (version, dimensions, mipmap count, compression format) plus a hex dump — useful for verifying assets before deployment.
+  </Card>
+  <Card title="Config Editor — GConfig" icon="sliders">
+    A compiled beta utility (`GConfig.exe`) for editing Rakion game configuration files on the server. Distributed as a pre-built binary in `compiled/gconfig_beta_bin/`; source code is not included in the repository.
+  </Card>
+</CardGroup>
+
+## Data Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Player Machine                           │
+│                                                                 │
+│  ┌────────────┐   registry write   ┌──────────────────────┐    │
+│  │ FixLaunch  │ ─────────────────► │ HKLM\Softnyx\Rakion  │    │
+│  └────────────┘                    │  Location, Version   │    │
+│                                    └──────────────────────┘    │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                   Rakion Launcher (client)               │  │
+│  └──┬───────────────────────┬──────────────────────────────┘  │
+│     │                       │                                  │
+└─────┼───────────────────────┼──────────────────────────────────┘
+      │                       │
+      │ GET launcherlogin.php  │ GET fetch/fetch.php
+      │ ?user=X&pass=HEX      │ ?{AppId}&{ClientVersion}
+      ▼                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Web Server                               │
+│                                                                 │
+│  ┌────────────────────┐   ┌────────────────────┐               │
+│  │ launcherlogin.php  │   │  fetch/fetch.php    │               │
+│  │                    │   │                     │               │
+│  │ hex decode pass    │   │ query fetchapp      │               │
+│  │ query user table   │   │ query fetchfile     │               │
+│  │ return sha1 token  │   │ return manifest     │               │
+│  └────────┬───────────┘   └──────────┬──────────┘               │
+│           │                          │                          │
+│           │          ┌───────────────┘                          │
+│           ▼          ▼                                          │
+│      ┌──────────────────────┐                                   │
+│      │      config.php      │  (shared credentials +           │
+│      │   MYSQL_HOST/USER/   │   feature flags)                  │
+│      │   PASS/NAME          │                                   │
+│      └──────────────────────┘                                   │
+└───────────────────────┬─────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    MySQL — rakion database                       │
+│                                                                 │
+│   user  usergameinfo  cash  logingold  logincash                │
+│   fetchapp  fetchfile  [stored procs: DeletePending ...]        │
+└──────────────────────────────────┬──────────────────────────────┘
+                                   │
+                        ┌──────────┘
+                        │  periodic stored-procedure calls
+                        ▼
+           ┌─────────────────────────┐
+           │       AutoQuery         │
+           │  (runs on server host)  │
+           │  Timer → DeletePending  │
+           └─────────────────────────┘
+```
+
+## Authentication Flow
+
+The Rakion launcher authenticates a player by calling `launcherlogin.php` with a GET request:
+
+```
+GET /launcherlogin.php?user=USERNAME&pass=HEX_ENCODED_PASSWORD
+```
+
+The password is hex-encoded by the launcher before transmission (each byte of the plain-text password is represented as two hexadecimal characters). On the server side, `launcherlogin.php` performs the following steps:
+
+1. **Decode** the hex-encoded password back to plain text using `hexToStr()`.
+2. **Sanitize** both the username and decoded password with `anti_injection()` to strip SQL keywords and special characters.
+3. **Query** `SELECT * FROM user WHERE id=:user AND password=:password` using PDO prepared statements.
+4. **On success** — compute a session token as `sha1(username + CLIENT_AUTH + hex_password)` and echo it back to the launcher.
+5. **On failure** — echo `[Error]: 1`.
+6. **When `SERVER_ON` is `false`** — echo the `SERVER_MSJ_M` maintenance message without querying the database.
+
+If `USER_GCVAR` or `USER_CCVAR` are enabled in `config.php`, the endpoint also checks the `logingold` / `logincash` tables and credits the player's daily gold or cash reward before returning the token.
+
+## Launcher Update Protocol
+
+The update system uses `fetch/fetch.php` to serve a text-based manifest. The launcher makes a GET request with `AppId` and `ClientVersion` as a query string:
+
+```
+GET /fetch/fetch.php?{AppId}&{ClientVersion}
+```
+
+Both parameters must be integers. The server queries the `fetchapp` table for the given `AppId` and compares `VerLimit` against `ClientVersion`:
+
+- **`VerLimit == ClientVersion`** — client is up to date; server returns nothing.
+- **`VerLimit > ClientVersion`** — client needs updating; server returns a multi-line manifest:
+
+```
++{NoticeUrl}
+={FileUrl}
+~{count};{totalSize};{verLimit}
+{Command};{FileDir};{FileIns};{FileVer};{FileSize}
+{Command};{FileDir};{FileIns};{FileVer};{FileSize}
+...
+```
+
+| Line prefix | Content |
+|---|---|
+| `+` | URL of the news/notice page to display in the launcher |
+| `=` | Base URL from which update files are downloaded |
+| `~` | Summary: number of files to update; total download size in bytes; target version |
+| _(no prefix)_ | One record per file: semicolon-delimited `Command`, `FileDir`, `FileIns`, `FileVer`, `FileSize` |
+
+The `fetchfile` table row fields map directly to the per-file manifest records:
+
+| Column | Manifest field | Description |
+|---|---|---|
+| `Command` | `Command` | Launcher action (e.g. update, delete) |
+| `FileDir` | `FileDir` | Path on disk where the file should be written |
+| `FileIns` | `FileIns` | Source file name/path on the update server |
+| `FileVer` | `FileVer` | Version number that introduced this file |
+| `FileSize` | `FileSize` | File size in bytes |
+
+Only rows where `FileVer > ClientVersion` and `AppId = AppId` are included, so the launcher downloads only the delta since its last update.
+
+## File Integrity Verification
+
+`file.php` provides a simple SHA-1 checksum service for critical game binaries. The launcher sends a GET request with the filename:
+
+```
+GET /file.php?f=rakion.bin
+```
+
+The server returns the expected SHA-1 hex string for the named file. The currently supported files and their hardcoded checksums are:
+
+| File | SHA-1 |
+|---|---|
+| `rakion.bin` | `00994040083d6620daef2bdbb9bf856c712e02f2` |
+| `entitiesmp.dll` | `fd5fa6f022ff5dcd644160f434735096feba18a8` |
+| `engine.dll` | `4193ac14e5333ac61a230ee32cbb1ab51d624008` |
+| `buddy2.dll` | `96a4bdd43baa596b5c3d4aa5cd482f66faf8622d` |
+| `datasetup.xfs` | `fef007c327f022a43d73b60aaeca51e45d0fd267` |
+
+These checksums are hardcoded in `file.php`. If you ship a modified binary, update the corresponding value in `file.php` to match the SHA-1 of your build.

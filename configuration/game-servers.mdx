@@ -1,0 +1,122 @@
+---
+title: "GameServers.ini and Settings.ini for BrokenServer"
+sidebarTitle: "Game Servers"
+description: "Configure world server endpoints, IPC ports, and console debug mode for BrokenServer using GameServers.ini and Settings.ini."
+---
+
+BrokenServer is the compiled Rakion game server binary. Its behaviour is controlled by two INI files located in `compiled/broken_bin/Settings/` relative to the repository root (or next to `BrokenServer.exe` when deployed). Both files must be edited before starting the server for the first time.
+
+---
+
+## GameServers.ini
+
+`GameServers.ini` declares every world server instance that BrokenServer will expose to connecting clients. The `[SERVERS]` section acts as an index; each numbered entry points to a named section that holds that server's connection details.
+
+```ini compiled/broken_bin/Settings/GameServers.ini
+[SERVERS]
+1=Server.Local
+2=WorldServer2
+3=WorldServer3
+
+[Server.Local]
+ID=1
+Name=WorldServer1
+ip=127.0.0.1          // lan ip
+wan=192.168.1.6       // wan ip
+port=40708
+ipcport=40708
+lan_wan=0             // 0 = lan | 1 = wan
+
+[WorldServer2]
+ID=2
+Name=WorldServer2
+ip=192.168.1.6
+wan=192.168.1.6
+port=40709
+ipcport=40709
+lan_wan=0
+
+[WorldServer3]
+ID=3
+Name=WorldServer3
+ip=192.168.1.6
+wan=192.168.1.6
+port=40710
+ipcport=40710
+lan_wan=0
+```
+
+### \[SERVERS\] Index
+
+The `[SERVERS]` section lists the server sections that are loaded at startup. Keys are sequential integers; values are the section names defined below.
+
+| Key | Example Value | Description |
+|-----|---------------|-------------|
+| `1` | `Server.Local` | Name of the first server section to load. |
+| `2` | `WorldServer2` | Name of the second server section to load. |
+| `3` | `WorldServer3` | Name of the third server section to load. |
+
+Add or remove entries here to control which world servers are active. The section name must exactly match the corresponding `[SectionName]` header below.
+
+### Per-Server Keys
+
+Each named server section (e.g. `[Server.Local]`, `[WorldServer2]`) uses the following keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `ID` | int | Numeric identifier for this server, referenced internally by the server binary. |
+| `Name` | string | Display name shown to players in the server list. |
+| `ip` | string | LAN IP address of this world server. Used when `lan_wan = 0`. |
+| `wan` | string | WAN / external IP address of this world server. Used when `lan_wan = 1`. |
+| `port` | int | Game port that clients connect to for gameplay traffic. |
+| `ipcport` | int | Inter-process communication port. Typically the same value as `port`. |
+| `lan_wan` | int | Address selector: `0` = use `ip` (LAN), `1` = use `wan` (WAN/internet). |
+
+---
+
+## Settings.ini (BrokenServer)
+
+`Settings.ini` configures the main server bind address, IPC interface, and console verbosity for BrokenServer itself.
+
+```ini compiled/broken_bin/Settings/Settings.ini
+[Server]
+ip=192.168.1.5
+port=40706
+[IPC]
+port=40706
+ip=127.0.0.1
+[CONSOLE]
+debug=1
+```
+
+### \[Server\] Section
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `ip` | string | The IP address BrokenServer binds to for incoming client connections. Set this to the NIC address you want the server to listen on. |
+| `port` | int | The TCP/UDP port BrokenServer listens on for game client traffic (e.g. `40706`). |
+
+### \[IPC\] Section
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `port` | int | The port used for inter-process communication between server processes. Typically the same as `[Server] port`. |
+| `ip` | string | The IP address the IPC listener binds to. Use `127.0.0.1` to restrict IPC to the local machine. |
+
+### \[CONSOLE\] Section
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `debug` | int | Console verbosity level. `0` = disabled (minimal output), `1` = verbose debug output enabled. |
+
+---
+
+## Callouts
+
+<Tip>
+  For a **LAN-only** server set `lan_wan=0` on every world server entry and point `ip` to your local network address (e.g. `192.168.1.x`). For an **internet-facing** server set `lan_wan=1` and set `wan` to your public IP address so remote clients resolve the correct endpoint.
+</Tip>
+
+<Warning>
+  Make sure ports `40706` through `40710` (and any others you configure) are open in your host firewall. If your server is behind a home router or NAT device, you must also set up port forwarding for each of these ports to the machine running BrokenServer.
+</Warning>

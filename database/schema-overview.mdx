@@ -1,0 +1,99 @@
+---
+title: "Rakion Database Schema: Tables and Their Purpose"
+sidebarTitle: "Schema Overview"
+description: "Complete overview of all MySQL tables in the Rakion database — users, characters, clans, items, rankings, launcher fetch, and maintenance tables."
+---
+
+The `rakion` MySQL database is the central data store for all Rakion server components. Every subsystem — the game server, the web API, the launcher, and the AutoQuery background service — reads from and writes to this single database. Understanding its table layout is essential before configuring or extending your private server.
+
+## Importing the Schema
+
+Import `database/rakion_all.sql` to create all tables in a fresh `rakion` database:
+
+```bash
+mysql -u root -p rakion < database/rakion_all.sql
+```
+
+The file opens with `SET FOREIGN_KEY_CHECKS=0` so tables can be created in any order without dependency errors.
+
+---
+
+## Table Groups
+
+<Accordion title="User & Account Tables">
+
+| Table | Purpose |
+|---|---|
+| `user` | Player account credentials — `id` (varchar 11, primary key) and `password` (varchar 11), plus `e_mail`, `country`, `NoCountryUpdate`, and `Authority`. |
+| `usergameinfo` | In-game state per user — gold balance, tutorial flag, character slots, ban status, clan membership, power-user timer, rank grade, country, and `lastconnect`/`createtime` timestamps. |
+| `cash` | Premium currency balance — `id` (char 16, primary key) and `cash` (int). |
+| `admininfo` | Admin account records — `Class` (tinyint, permission level) and `IP` (char 15, bound IP address). |
+| `logingold` | Tracks the last daily gold reward per user — `id` (varchar 11) and `date` (datetime). Used to prevent duplicate daily rewards. |
+| `logincash` | Tracks the last daily cash reward per user — `id` (varchar 11) and `date` (datetime). Mirrors `logingold` for premium currency rewards. |
+
+</Accordion>
+
+<Accordion title="Character Tables">
+
+| Table | Purpose |
+|---|---|
+| `characterinfo` | Full character record — auto-increment `id`, `userid` (foreign key to `user`), `name`, `Class`, `level`, `win`/`lose`/`draw`, `exp`, `levelpoint`, equipment hits (`hit1`–`hit4`), `chit`, base stats (`hp`, `ap`, `attackspeed`, `speed`, `maxcp`), rank data (`rankgrade`, `totalrank`, `classrank`), `potionslot`, `slot`, `used`, `auth`, `deletekey`, and `changetime`/`createtime` timestamps. |
+| `buddylist` | Friend/buddy relationships — `Id` (the owning character), `Category` (list grouping), and `Buddy` (the friend's character name). |
+
+</Accordion>
+
+<Accordion title="Clan Tables">
+
+| Table | Purpose |
+|---|---|
+| `claninfo` | Active clan records — auto-increment `id`, `masterid` (leader's user id), `mastername`, clan `name`, `point` (score), `members` count, current `rank`, `createtime`, and `country`. |
+| `clanrankp` | Clan ranking snapshot (periodically rebuilt) — `rank`, `clanid`, `name`, `master`, `members`, `createtime`, `point`, `lastrank`, and `country`. |
+
+</Accordion>
+
+<Accordion title="Ranking Tables">
+
+All per-class ranking snapshot tables share the same schema: `rank`, `username`, `name`, `grade`, `level`, `exp`, `win`, `lose`, `draw`, `lastrank`, and `country`.
+
+| Table | Character class |
+|---|---|
+| `archerrankp` | Archer |
+| `blacksmithrankp` | Blacksmith |
+| `magerankp` | Mage |
+| `ninjarankp` | Ninja |
+| `swordmanrankp` | Swordman |
+
+The `totalrankp` table extends this schema with an additional `id`, `classrank`, and `class` column to hold the combined cross-class leaderboard.
+
+</Accordion>
+
+<Accordion title="Shop & Commerce Tables">
+
+| Table | Purpose |
+|---|---|
+| `buyinfo` | Purchase records — `SerialNo` (tinytext), `MenuNo` (int), `Price` (int), `Asset` (text), `BuyType` (int), and `Time` (time). |
+| `itembox` | Item storage per user — auto-increment `id`, `userid`, `itemid`, and `limittime` (bigint, expiration timestamp for time-limited items). |
+| `pendingpresents` | Pending gift items queued for delivery — auto-increment `id`, `present_id`, `user_id`, and `added_time`. Rows are cleared automatically by the AutoQuery service. |
+
+</Accordion>
+
+<Accordion title="Launcher Tables">
+
+These two tables power the launcher's automatic file update system. See [Fetch Tables](/database/fetchapp-fetchfile) for full documentation.
+
+| Table | Purpose |
+|---|---|
+| `fetchapp` | App update registry — `AppId` (INT, primary key), `FileUrl` (VARCHAR 50), `NoticeUrl` (VARCHAR 50), `VerLimit` (INT). One row per application/launcher. |
+| `fetchfile` | Individual file update records — `AppId`, `Command` (ENUM `M`/`R`), `FileIns` (install destination), `FileDir` (relative file path), `FileVer` (INT), `FileSize` (INT). |
+
+</Accordion>
+
+---
+
+<Note>
+  The `pendingpresents` table is periodically cleared by AutoQuery using the `DeletePending` stored procedure. AutoQuery calls `CommandSQL("DeletePending")` on a configurable timer to purge processed gift rows. See the AutoQuery source at `source/AutoQuery/AutoQuery/Program.cs`.
+</Note>
+
+<Tip>
+  Use the `rakion_old/` directory files for reference on how the schema has evolved. Run `db_update_1.sql` and `items_update_1_0.sql` after the base schema if migrating from an older version. See [Migrations](/database/migrations) for step-by-step instructions.
+</Tip>

@@ -1,0 +1,102 @@
+---
+title: "Database Migration Files and Version History"
+sidebarTitle: "Migrations"
+description: "How to apply the Rakion database migration scripts to upgrade from an older schema to the current version."
+---
+
+The `database/` directory ships with a complete current schema for fresh installs as well as a set of incremental migration scripts for upgrading an existing older installation. Whether you are setting up a brand-new server or migrating a live database, follow the appropriate steps below.
+
+---
+
+## Migration Files
+
+| File | Purpose |
+|---|---|
+| `database/rakion_all.sql` | The **complete current schema** — all tables, seed data, and indexes in a single file. Use this for fresh installs. |
+| `database/rakion_old/rakion_db.sql` | An older baseline schema exported from an earlier version of the server. Use as a reference for schema history or to restore a legacy database. |
+| `database/rakion_old/db_update_1.sql` | Incremental update 1 from the old baseline. Applies structural changes including the `fetchapp` and `fetchfile` tables, updated `logingold`/`logincash` schemas, and additional supporting tables. |
+| `database/rakion_old/items_update_1_0.sql` | Item table data changes for update 1.0. Populates or updates `iteminfo` rows for all character classes to match the current item catalog. |
+
+---
+
+## Fresh Install
+
+<Steps>
+  <Step title="Create the database">
+    Log in to MySQL and create a new UTF-8 database:
+
+    ```sql
+    CREATE DATABASE rakion CHARACTER SET utf8;
+    ```
+  </Step>
+
+  <Step title="Import the full schema">
+    Import `rakion_all.sql` to create every table and load all seed data in one step:
+
+    ```bash
+    mysql -u root -p rakion < database/rakion_all.sql
+    ```
+  </Step>
+
+  <Step title="Verify the tables">
+    Confirm all tables were created successfully:
+
+    ```sql
+    USE rakion;
+    SHOW TABLES;
+    ```
+
+    You should see all tables including `user`, `usergameinfo`, `characterinfo`, `fetchapp`, `fetchfile`, and the full set of ranking tables.
+  </Step>
+</Steps>
+
+---
+
+## Migrating from an Older Installation
+
+If you are upgrading from an existing database that was created with the older `rakion_old/rakion_db.sql` baseline, apply the incremental migration scripts in order.
+
+<Steps>
+  <Step title="Back up your existing database">
+    Always create a full dump before making any schema changes:
+
+    ```bash
+    mysqldump -u root -p rakion > rakion_backup.sql
+    ```
+  </Step>
+
+  <Step title="Apply db_update_1">
+    Run the first incremental update script. This adds tables such as `fetchapp`, `fetchfile`, updated login reward tables, and other structural changes introduced after the original baseline:
+
+    ```bash
+    mysql -u root -p rakion < database/rakion_old/db_update_1.sql
+    ```
+  </Step>
+
+  <Step title="Apply the items update">
+    Run the item table update script to bring `iteminfo` data in line with the current item catalog:
+
+    ```bash
+    mysql -u root -p rakion < database/rakion_old/items_update_1_0.sql
+    ```
+  </Step>
+
+  <Step title="Verify all tables exist">
+    Confirm the migration completed and all expected tables are present:
+
+    ```sql
+    USE rakion;
+    SHOW TABLES;
+    ```
+  </Step>
+</Steps>
+
+---
+
+<Warning>
+  Always back up your database before running any migration script. The migration scripts use `DROP TABLE IF EXISTS` statements and **will permanently destroy existing table data** before recreating the table structure. The backup you create in step 1 is your only recovery option.
+</Warning>
+
+<Note>
+  `rakion_all.sql` opens with `SET FOREIGN_KEY_CHECKS=0` during import. This allows all tables to be created in alphabetical order without triggering foreign key dependency errors. `FOREIGN_KEY_CHECKS` is not explicitly re-enabled at the end of the file, so it will reset to your session default (typically `1`) when the import completes.
+</Note>

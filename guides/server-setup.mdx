@@ -1,0 +1,164 @@
+---
+title: "Deploy a Full Rakion Private Server from Scratch"
+sidebarTitle: "Server Setup"
+description: "End-to-end guide for deploying a Rakion private server: MySQL, PHP web backend, AutoQuery, BrokenServer, and client distribution."
+---
+
+Standing up a Rakion private server involves several moving pieces: a MySQL database, a PHP web backend for launcher authentication and file delivery, the AutoQuery C# daemon that periodically processes pending commands, the BrokenServer game-server binary, and the FixLaunch utility distributed to players. This guide walks you through every layer in order.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Windows Server or Windows 10/11" icon="windows">
+    All compiled binaries (AutoQuery, BrokenServer, FixLaunch) are Windows executables targeting .NET Framework 4.x.
+  </Card>
+  <Card title="MySQL 5.5+ or MariaDB equivalent" icon="database">
+    The schema was generated against MySQL 5.5.34. MariaDB 10.x is a compatible drop-in replacement.
+  </Card>
+  <Card title="PHP 7.4+ web server" icon="php">
+    Apache or Nginx with PHP-FPM. The backend uses PDO for all database access and requires no special extensions beyond `pdo_mysql`.
+  </Card>
+  <Card title=".NET Framework 4.x" icon="code">
+    Required to run AutoQuery.exe and BrokenServer.exe. Install the matching runtime from Microsoft if it is not already present on your server.
+  </Card>
+  <Card title="Firewall ports 40706–40710" icon="shield">
+    BrokenServer binds to port 40706 by default. Additional world-server instances use ports 40707–40710. Open these in Windows Firewall and any upstream network firewall.
+  </Card>
+</CardGroup>
+
+## Full Setup
+
+<Steps>
+  <Step title="Install MySQL and create the database">
+    Install MySQL 5.5+ (or MariaDB) and then create a dedicated database and user:
+
+    ```sql
+    CREATE DATABASE rakion CHARACTER SET utf8;
+    CREATE USER 'rakionuser'@'localhost' IDENTIFIED BY 'your-secure-password';
+    GRANT ALL PRIVILEGES ON rakion.* TO 'rakionuser'@'localhost';
+    FLUSH PRIVILEGES;
+    ```
+  </Step>
+
+  <Step title="Import the schema">
+    The repository ships a complete schema dump at `database/rakion_all.sql`. Import it into the database you just created:
+
+    ```bash
+    mysql -u rakionuser -p rakion < database/rakion_all.sql
+    ```
+
+    This creates every required table, including `fetchapp`, `fetchfile`, `user`, `usergameinfo`, `cash`, and all rank tables.
+  </Step>
+
+  <Step title="Deploy the PHP web backend">
+    Copy the contents of `source/web/` to your web server's document root (e.g. `/var/www/html/` or `C:\inetpub\wwwroot\`). Then open `config.php` and update the connection details:
+
+    ```php
+    define('MYSQL_HOST', "127.0.0.1");
+    define('MYSQL_USER', "rakionuser");
+    define('MYSQL_PASS', "your-secure-password");
+    define('MYSQL_NAME', "rakion");
+
+    // Salt used to generate the per-session client auth token
+    define('CLIENT_AUTH', "your-secret-salt");
+
+    // Set to false to show a maintenance message to all clients
+    define('SERVER_ON', true);
+    ```
+
+    The `launcherlogin.php` script will use `CLIENT_AUTH` to produce `sha1(username + CLIENT_AUTH + password_hex)` — the token the launcher presents to game servers for session validation. The `fetch/` subdirectory contains `fetch.php`, which handles the file-update manifest endpoint.
+  </Step>
+
+  <Step title="Configure and run AutoQuery">
+    AutoQuery is a C# console daemon that periodically executes maintenance SQL against the database (currently `DeletePending`). It reads its configuration from `Settings/Settings.ini`, located in the same directory as `AutoQuery.exe`:
+
+    ```ini
+    [Timer]
+    minutes = 10
+    max     = 10
+    delay   = 10000
+    infi    = false
+
+    [MYSQL]
+    user    = rakionuser
+    pass    = your-secure-password
+    ipsv    = 127.0.0.1
+    port    = 3306
+    data    = rakion
+
+    [CONSOLE]
+    debug   = false
+    ```
+
+    - `minutes` — interval between timer ticks (in minutes)
+    - `max` — maximum number of iterations before stopping (ignored when `infi=true`)
+    - `delay` — milliseconds between internal timer callbacks (default `10000`)
+    - `infi` — set to `true` to run indefinitely instead of stopping after `max` iterations
+
+    Once the INI is configured, launch the executable:
+
+    ```
+    AutoQuery.exe
+    ```
+  </Step>
+
+  <Step title="Run BrokenServer">
+    BrokenServer is the game-server binary. Before launching it, configure `Settings/GameServers.ini` (world-server entries) and `Settings/Settings.ini` (main server IP/port and IPC settings) inside the `compiled/broken_bin/Settings/` folder:
+
+    **`Settings/Settings.ini`** (main server bind):
+    ```ini
+    [Server]
+    ip=192.168.1.5
+    port=40706
+
+    [IPC]
+    port=40706
+    ip=127.0.0.1
+
+    [CONSOLE]
+    debug=1
+    ```
+
+    **`Settings/GameServers.ini`** (world servers):
+    ```ini
+    [SERVERS]
+    1=Server.Local
+    2=WorldServer2
+    3=WorldServer3
+
+    [Server.Local]
+    ID=1
+    Name=WorldServer1
+    ip=127.0.0.1
+    wan=192.168.1.6
+    port=40708
+    ipcport=40708
+    lan_wan=0        ; 0 = lan | 1 = wan
+    ```
+
+    Then launch:
+
+    ```
+    compiled\broken_bin\BrokenServer.exe
+    ```
+  </Step>
+
+  <Step title="Distribute FixLaunch to players">
+    FixLaunch is a small Windows Forms utility that writes the Rakion installation path and version number into the Windows registry at `HKLM\SOFTWARE\Softnyx\Rakion`. Players must run it once after installing the client so the launcher can locate the game files.
+
+    Distribute `FixLaunch.exe` alongside your client package. Instruct players to:
+    1. Place `FixLaunch.exe` inside their Rakion client folder.
+    2. Right-click → **Run as administrator**.
+    3. Confirm the path shown in the first text box, enter the client version number in the second box, and click **Apply**.
+
+    A "Complete!" dialog confirms the registry entries were written successfully.
+  </Step>
+</Steps>
+
+<Warning>
+  Change the default MySQL password and the `CLIENT_AUTH` salt in `config.php` before going live. The default values in the repository (`19734682fgh` and `freeclient`) are publicly visible in the source code and must not be used in production.
+</Warning>
+
+<Tip>
+  Add `AutoQuery.exe` as a Windows Scheduled Task (trigger: **At system startup**, action: **Start a program**) or wrap it in a Windows service wrapper such as NSSM so it restarts automatically after a reboot or crash.
+</Tip>
